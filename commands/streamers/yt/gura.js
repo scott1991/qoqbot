@@ -11,8 +11,8 @@ const {RateLimitedTwitchChatCommand} = require('../../../service/rateLimited');
 class ViwersCommand extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
-      name: '!國動人數',
-      aliases: [ '!陌生人人數', '!團勳人數' ],
+      name: '!gura人數',
+      aliases: [ '!Gura人數', '!古拉人數', '!鯊魚人數', '!鯊鯊人數' ],
       group: 'streamers',
       description: ''
     });
@@ -20,11 +20,11 @@ class ViwersCommand extends RateLimitedTwitchChatCommand {
 
   async delayRun(msg) {
     try {
-      let info = await ytSvc.getLiveInfoByChannelId('UCw-N9mI3Om-AN2xgkEoSDsg');
+      let info = await ytSvc.getLiveInfoByChannelId('UCoSrY_IQQVpmIRZ9Xf-y93g');
       if ( info.actualEndTime ){
-        msg.reply('團勳現在沒開台，上次關台是'+ moment(info.actualEndTime).format("yyyy-MM-DD HH:mm") );   
+        msg.reply('Gawr Gura現在沒開台，上次關台是'+ moment(info.actualEndTime).format("yyyy-MM-DD HH:mm") );   
       }else{
-        msg.reply(`團勳台現在有:${info.currentViewers}人`);
+        msg.reply(`Gawr Gura台現在有:${info.currentViewers}人`);
       }
        
     } catch (e) {

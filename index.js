@@ -10,7 +10,7 @@ const { oauth } = require('./config.json');
 var client = new TwitchCommandoClient({
     username: 'cakebaobao',
     oauth: oauth,
-    channels: ['sweetcampercs', 'cakebaobao' ], // 'sweetcampercs'
+    channels: ['sweetcampercs', 'cakebaobao'],
     botOwners: [
         'cakebaobao'
     ],

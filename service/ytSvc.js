@@ -1,6 +1,9 @@
 const { yt_api_key } = require('../config.json');
 const got = require('got');
 
+//TODO: use https://holo.poi.cat/vtuber/marine
+//https://holodex.net/api/v2/channels/UCqm3BQLlJfvkTsX_hvm0UmA/videos?lang=zh&type=stream%2Cplaceholder&include=clips%2Clive_info&limit=24&offset=0&paginated=true
+//https://holodex.net/api/v2/channels/UCqm3BQLlJfvkTsX_hvm0UmA
 const rootURL = 'https://youtube.googleapis.com/youtube/v3/';
 
 function getChannelLiveVideoId(channelId) {
@@ -18,7 +21,8 @@ function getChannelLiveVideoId(channelId) {
   });
 }
 /*
-channelId can use : document.querySelector('[itemprop="channelId"]').getAttribute('content')
+channelId can use : 
+document.querySelector('[itemprop="identifier"]').getAttribute('content')
 
 not found:
 body: {

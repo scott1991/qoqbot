@@ -29,7 +29,7 @@ async function getLiveViewersCountByName_twitchtracker(username) {
       decompress: true,
     };
     const response = await got(url, options);
-    const matches = response.body.match(/<span class="live-stat to-number">(\d+)<\/span>/);
+    const matches = response.body.match(/<span class="live-stat">(\d+)<\/span>/);
     const number = matches ? matches[1] : null;
     return number;
   } catch (error) {
@@ -39,29 +39,22 @@ async function getLiveViewersCountByName_twitchtracker(username) {
 }
 
 async function getLiveViewersCountByName(username) {
-  let rnd = utils.getRandomInt(3);
   let info = {};
   try {
-    if (rnd <2) { // 0 1
-      let streamdata = await getStreamDataGQL(username);
-      if (streamdata.body && streamdata.body.data.channel.stream) {
-        info = {
-          viewers: streamdata.body.data.channel.stream.viewersCount,
-          time: streamdata.body.data.channel.stream.startedAt
-        }
-      } else {
-        info = {
-          viewers: null,
-          time: streamdata.body.data.channel.lastBroadcast.startedAt
-        }
+
+    let streamdata = await getStreamDataGQL(username);
+    if (streamdata.body && streamdata.body.data.channel.stream) {
+      info = {
+        viewers: streamdata.body.data.channel.stream.viewersCount,
+        time: streamdata.body.data.channel.stream.startedAt
       }
     } else {
-      let viewers = await getLiveViewersCountByName_twitchtracker(username);
       info = {
-        viewers: viewers,
-        time: null
+        viewers: null,
+        time: streamdata.body.data.channel.lastBroadcast.startedAt
       }
     }
+
 
     return info;
   } catch (error) {
@@ -93,7 +86,7 @@ async function getStreamDataGQL(username) {
     responseType: 'json',
     headers: {
       "Content-Type": "application/json",
-      "Client-Id": "r8s4dac0uhzifbpu9sjdiwzctle17ff",
+      "Client-Id": "kimne78kx3ncx6brgo4mv6wki5h1ko",
     },
   });
 

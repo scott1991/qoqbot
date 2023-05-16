@@ -6,7 +6,9 @@ const momentDurationFormatSetup = require("moment-duration-format");
 momentDurationFormatSetup(moment);
 moment.locale('zh-tw');
 
-class TwitchAccountRegistrationTime extends TwitchChatCommand {
+const {RateLimitedTwitchChatCommand} = require('../../service/rateLimited');
+
+class TwitchAccountRegistrationTime extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
       name: '!註冊時間',
@@ -20,10 +22,10 @@ class TwitchAccountRegistrationTime extends TwitchChatCommand {
     });
   }
 
-  async run(msg, { arg1 }) {
+  async delayRun(msg) {
+    let arg1 = '' ;
     let regdt;
     try {
-      console.log("arg1", arg1)
       let name = arg1 ? arg1 : msg.author.username;
       let userData = await twitchSvc.getUserByName(name);
       if (userData.body.createdAt) {

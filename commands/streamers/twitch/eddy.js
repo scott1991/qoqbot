@@ -1,7 +1,7 @@
 const { TwitchChatCommand } = require('twitch-commando');
 const util = require('util');
 const moment = require('moment');
-const ytSvc = require('../../../service/ytSvc');
+const twitchSvc = require('../../../service/twitchSvc');
 const momentDurationFormatSetup = require("moment-duration-format");
 momentDurationFormatSetup(moment);
 moment.locale('zh-tw');
@@ -11,19 +11,24 @@ const {RateLimitedTwitchChatCommand} = require('../../../service/rateLimited');
 class ViwersCommand extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
-      name: '!Pekora人數',
-      aliases: [ '!pekora人數', '!兔田人數', '!配可拉人數', '!佩克拉人數' ],
-      group: 'streamers'
+      name: '!神之愛人數',
+      aliases: [ '!eddy人數', '!Eddy人數', '!EddyTommy人數', '!愛哥人數', '!愛醬人數','eddytommy人數' ],
+      group: 'streamers',
+      description: ''
     });
   }
 
   async delayRun(msg) {
     try {
-      let info = await ytSvc.getLiveInfoByChannelId('UC1DCedRgGHBdm81E1llLhOQ'); // old UCCzUftO8KOVkV4wQG1vkUvg
-      if ( info.actualEndTime ){
-        msg.reply('兎田ぺこら現在沒開台，上次關台是'+ moment(info.actualEndTime).format("yyyy-MM-DD HH:mm") );   
+      let info = await twitchSvc.getLiveViewersCountByName('eddytommy30');
+      if ( info.viewers ){
+        msg.reply(`神之愛台現在有:${info.viewers}人`);
       }else{
-        msg.reply(`兎田ぺこら台現在有:${info.currentViewers}人`);
+        if ( info.time ){
+          msg.reply('神之愛現在沒開台，上次關台是'+ moment( info.time).format("yyyy-MM-DD HH:mm"));  
+        }else{
+          msg.reply('神之愛現在沒開台');
+        } 
       }
        
     } catch (e) {

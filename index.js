@@ -1,7 +1,6 @@
 const {
-    TwitchCommandoClient, TwtichChatMessage, TwtichChatUser, CommandoSQLiteProvider, TwitchChatMessage
+    TwitchCommandoClient, CommandoSQLiteProvider
 } = require('twitch-commando');
-const util = require('util');
 const sqlite = require('sqlite');
 const sqlite3 = require('sqlite3');
 const path = require('path');
@@ -14,7 +13,7 @@ var client = new TwitchCommandoClient({
     botOwners: [
         'cakebaobao'
     ],
-    prefix:"",
+    prefix: "",
     logger: 'warn', // Set the log level to "warn"
 });
 
@@ -43,8 +42,9 @@ client.on('message', message => {
 client.registerDetaultCommands();
 client.registerCommandsIn(path.join(__dirname, 'commands'));
 
-client.setProvider(
-    sqlite.open({ filename: path.join(__dirname, 'database.sqlite3'), driver: sqlite3.Database }).then(db => new CommandoSQLiteProvider(db))
-);
+sqlite.open({ driver: sqlite3.Database, filename: path.join(__dirname, 'database.sqlite3') })
+    .then((db) => {
+        client.setProvider(new CommandoSQLiteProvider(db))
+    })
+    .then(() => client.connect());
 
-client.connect();

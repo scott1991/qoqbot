@@ -42,9 +42,17 @@ client.on('message', message => {
 client.registerDetaultCommands();
 client.registerCommandsIn(path.join(__dirname, 'commands'));
 
-sqlite.open({ driver: sqlite3.Database, filename: path.join(__dirname, 'database.sqlite3') })
-    .then((db) => {
-        client.setProvider(new CommandoSQLiteProvider(db))
-    })
-    .then(() => client.connect());
+// sqlite.open({ driver: sqlite3.Database, filename: path.join(__dirname, 'database.sqlite3') })
+//     .then((db) => {
+//         client.setProvider(new CommandoSQLiteProvider(db))
+//     })
+//     .then(() => client.connect());
+
+async function setupAndConnect() {
+    const db = await sqlite.open({ driver: sqlite3.Database, filename: path.join(__dirname, 'database.sqlite3')});
+    await client.setProvider(new CommandoSQLiteProvider(db));
+    client.connect();
+}
+
+setupAndConnect().catch(console.error);
 

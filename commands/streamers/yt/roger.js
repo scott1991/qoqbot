@@ -11,8 +11,8 @@ const {RateLimitedTwitchChatCommand} = require('../../../service/rateLimited');
 class ViwersCommand extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
-      name: '!羅傑人數',
-      aliases: [ '!roger人數', '!Roger人數', '!羅總人數', '!喇傑人數' ],
+      name: '!羅傑yt人數',
+      aliases: [ '!羅傑YT人數', '!rogeryt人數', '!羅總yt人數', '!喇傑yt人數', '!Rogeryt人數', ],
       group: 'streamers',
       description: ''
     });
@@ -22,9 +22,9 @@ class ViwersCommand extends RateLimitedTwitchChatCommand {
     try {
       let info = await ytSvc.getLiveInfoByChannelId('UCiEm9noegBIb-AzjqpxKffA');
       if ( info.actualEndTime ){
-        msg.reply('羅傑現在沒開台，上次關台是'+ moment(info.actualEndTime).format("yyyy-MM-DD HH:mm") );   
+        msg.reply('羅傑YT現在沒開台，上次關台是'+ moment(info.actualEndTime).format("yyyy-MM-DD HH:mm") );   
       }else{
-        msg.reply(`羅傑台現在有:${info.currentViewers}人`);
+        msg.reply(`羅傑YT台現在有:${info.currentViewers}人`);
       }
        
     } catch (e) {

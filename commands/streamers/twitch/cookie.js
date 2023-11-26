@@ -11,8 +11,8 @@ const {RateLimitedTwitchChatCommand} = require('../../../service/rateLimited');
 class ViwersCommand extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
-      name: '!羅傑人數',
-      aliases: [ '!roger人數' ],
+      name: '!餅乾好吃人數',
+      aliases: [ '!餅乾人數', '!cookie人數', '!Cookie人數', '!cookiegoodgood人數' ],
       group: 'streamers',
       description: ''
     });
@@ -20,14 +20,14 @@ class ViwersCommand extends RateLimitedTwitchChatCommand {
 
   async delayRun(msg) {
     try {
-      let info = await twitchSvc.getLiveViewersCountByName('roger9527');
+      let info = await twitchSvc.getLiveViewersCountByName('cookiegoodgood');
       if ( info.viewers ){
-        msg.reply(`羅傑圖奇台現在有:${info.viewers}人`);
+        msg.reply(`餅乾台現在有:${info.viewers}人`);
       }else{
         if ( info.time ){
-          msg.reply('羅傑圖奇現在沒開台，上次關台是'+ moment( info.time).format("yyyy-MM-DD HH:mm"));  
+          msg.reply('餅乾現在沒開台，上次關台是'+ moment( info.time).format("yyyy-MM-DD HH:mm"));  
         }else{
-          msg.reply('羅傑圖奇現在沒開台');
+          msg.reply('餅乾現在沒開台');
         } 
       }
        

@@ -1,7 +1,7 @@
 const { TwitchChatCommand } = require('twitch-commando');
 const util = require('util');
 const moment = require('moment');
-const twitchSvc = require('../../../service/twitchSvc');
+const ytSvc = require('../../../service/ytSvc');
 const momentDurationFormatSetup = require("moment-duration-format");
 momentDurationFormatSetup(moment);
 moment.locale('zh-tw');
@@ -11,8 +11,8 @@ const {RateLimitedTwitchChatCommand} = require('../../../service/rateLimited');
 class ViwersCommand extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
-      name: '!羅傑人數',
-      aliases: [ '!roger人數' ],
+      name: '!fuwamoco人數',
+      aliases: [ '!Fuwamoco人數', '!FUWAMOCO人數', '!baubau人數', '!BAUBAU人數' ],
       group: 'streamers',
       description: ''
     });
@@ -20,15 +20,11 @@ class ViwersCommand extends RateLimitedTwitchChatCommand {
 
   async delayRun(msg) {
     try {
-      let info = await twitchSvc.getLiveViewersCountByName('roger9527');
-      if ( info.viewers ){
-        msg.reply(`羅傑圖奇台現在有:${info.viewers}人`);
+      let info = await ytSvc.getLiveInfoByChannelId('UCt9H_RpQzhxzlyBxFqrdHqA');
+      if ( info.actualEndTime ){
+        msg.reply('FUWAMOCO現在沒開台，上次關台是'+ moment(info.actualEndTime).format("yyyy-MM-DD HH:mm") );   
       }else{
-        if ( info.time ){
-          msg.reply('羅傑圖奇現在沒開台，上次關台是'+ moment( info.time).format("yyyy-MM-DD HH:mm"));  
-        }else{
-          msg.reply('羅傑圖奇現在沒開台');
-        } 
+        msg.reply(`FUWAMOCO台現在有:${info.currentViewers}人`);
       }
        
     } catch (e) {

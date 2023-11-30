@@ -22,12 +22,12 @@ class ViwersCommand extends RateLimitedTwitchChatCommand {
     try {
       let info = await twitchSvc.getLiveViewersCountByName('cookiegoodgood');
       if ( info.viewers ){
-        msg.reply(`餅乾台現在有:${info.viewers}人`);
+        msg.reply(`餅乾好吃台現在有:${info.viewers}人`);
       }else{
         if ( info.time ){
-          msg.reply('餅乾現在沒開台，上次關台是'+ moment( info.time).format("yyyy-MM-DD HH:mm"));  
+          msg.reply('餅乾好吃現在沒開台，上次關台是'+ moment( info.time).format("yyyy-MM-DD HH:mm"));  
         }else{
-          msg.reply('餅乾現在沒開台');
+          msg.reply('餅乾好吃現在沒開台');
         } 
       }
        

@@ -12,7 +12,7 @@ class ViwersCommand extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
       name: '!久遠人數',
-      aliases: [ '!Tama人數', '!QuonTama人數', '!久遠たま人數', '!久遠tama人数', '!tama人數' ],
+      aliases: [ '!Tama人數', '!QuonTama人數', '!久遠たま人數', '!久遠tama人數', '!tama人數' ],
       group: 'streamers',
       description: ''
     });

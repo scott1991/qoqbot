@@ -5,7 +5,7 @@ class SampleCommand extends TwitchChatCommand
     constructor(client)
     {
         super(client, {
-            name: '!安安安安',
+            name: '安安安安安',
             // aliases: [ 's' ],
             group: 'samples',
             description: '安安'

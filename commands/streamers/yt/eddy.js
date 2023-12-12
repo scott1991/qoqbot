@@ -1,7 +1,7 @@
 const { TwitchChatCommand } = require('twitch-commando');
 const util = require('util');
 const moment = require('moment');
-const twitchSvc = require('../../../service/twitchSvc');
+const ytSvc = require('../../../service/ytSvc');
 const momentDurationFormatSetup = require("moment-duration-format");
 momentDurationFormatSetup(moment);
 moment.locale('zh-tw');
@@ -11,8 +11,8 @@ const {RateLimitedTwitchChatCommand} = require('../../../service/rateLimited');
 class ViwersCommand extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
-      name: '!神之愛圖奇人數',
-      // aliases: [ '!eddy人數', '!Eddy人數', '!EddyTommy人數', '!愛哥人數', '!愛醬人數','eddytommy人數' ],
+      name: '!神之愛人數',
+      aliases: [ '!eddy人數', '!Eddy人數', '!EddyTommy人數', '!愛哥人數', '!愛醬人數','eddytommy人數' ],
       group: 'streamers',
       description: ''
     });
@@ -20,15 +20,11 @@ class ViwersCommand extends RateLimitedTwitchChatCommand {
 
   async delayRun(msg) {
     try {
-      let info = await twitchSvc.getLiveViewersCountByName('eddytommy30');
-      if ( info.viewers ){
-        msg.reply(`神之愛台現在有:${info.viewers}人`);
+      let info = await ytSvc.getLiveInfoByChannelId('UCiJ0I4szok8aMxsWU8iTF_Q');
+      if ( info.actualEndTime ){
+        msg.reply('神之愛現在沒開台，上次關台是'+ moment(info.actualEndTime).format("yyyy-MM-DD HH:mm") );   
       }else{
-        if ( info.time ){
-          msg.reply('神之愛現在沒開台，上次關台是'+ moment( info.time).format("yyyy-MM-DD HH:mm"));  
-        }else{
-          msg.reply('神之愛現在沒開台');
-        } 
+        msg.reply(`神之愛台現在有:${info.currentViewers}人`);
       }
        
     } catch (e) {

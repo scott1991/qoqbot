@@ -30,8 +30,9 @@ jobs:
     - name: Deploy to server
       if: github.ref == 'refs/heads/main'
       run: |
+        mkdir -p ~/.ssh/
         echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -t rsa yourserver.com >> ~/.ssh/known_hosts
-        scp -P ${{ secrets.SSH_PORT }} -r * scott@128.22.136.213:/opt/servers/qoqbot
-        ssh -p ${{ secrets.SSH_PORT }} scott@128.22.136.213 'cd /opt/servers/qoqbot && npm install && pm2 restart qoqbot'
+        ssh-keyscan -H -t rsa ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+        scp -P ${{ secrets.SSH_PORT }} -r * ${{ secrets.USER }}@${{ secrets.HOST }}:/opt/servers/qoqbot
+        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.USER }}@${{ secrets.HOST }} 'cd /opt/servers/qoqbot && npm install && pm2 restart qoqbot'

@@ -30,7 +30,7 @@ jobs:
     - name: Deploy to server
       if: github.ref == 'refs/heads/main'
       run: |
-        scp -r * scott@128.22.136.213:/opt/servers/qoqbot
-        ssh scott@128.22.136.213 'cd /opt/servers/qoqbot && npm install && pm2 restart qoqbot'
+        scp -P ${{ secrets.SSH_PORT }} -r * scott@128.22.136.213:/opt/servers/qoqbot
+        ssh -p ${{ secrets.SSH_PORT }} scott@128.22.136.213 'cd /opt/servers/qoqbot && npm install && pm2 restart qoqbot'
       env:
         DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}

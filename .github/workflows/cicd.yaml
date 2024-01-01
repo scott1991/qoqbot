@@ -33,6 +33,8 @@ jobs:
         mkdir -p ~/.ssh/ && echo "mkdir succeeded"
         echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa  && echo "save key succeeded"
         chmod 600 ~/.ssh/id_rsa && echo "chmod key succeeded"
-        ssh-keyscan -H -t rsa ${{ secrets.HOST }} >> ~/.ssh/known_hosts && echo "keyscan succeeded"
-        scp -P ${{ secrets.SSH_PORT }} -r * ${{ secrets.USER }}@${{ secrets.HOST }}:/opt/servers/qoqbot && echo "scp succeeded"
+        ssh-keyscan -H -t rsa ${{ secrets.HOST }} >> ~/.ssh/known_hosts 
+        echo "keyscan succeeded"
+        scp -P ${{ secrets.SSH_PORT }} -r * ${{ secrets.USER }}@${{ secrets.HOST }}:/opt/servers/qoqbot
+        echo "scp succeeded"
         ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.USER }}@${{ secrets.HOST }} 'cd /opt/servers/qoqbot && npm install && pm2 restart qoqbot'

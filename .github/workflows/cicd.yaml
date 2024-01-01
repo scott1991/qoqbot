@@ -1,0 +1,36 @@
+name: Node.js CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [16.x, 17.x, 18.x, 19.x]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v1
+      with:
+        node-version: ${{ matrix.node-version }}
+    - run: npm ci
+
+  cd:
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Deploy to server
+      if: github.ref == 'refs/heads/main'
+      run: |
+        scp -r * scott@128.22.136.213:/opt/servers/qoqbot
+        ssh scott@128.22.136.213 'cd /opt/servers/qoqbot && npm install && pm2 restart qoqbot'
+      env:
+        DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}

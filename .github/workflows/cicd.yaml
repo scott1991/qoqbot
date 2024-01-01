@@ -35,4 +35,4 @@ jobs:
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H -t rsa -p ${{ secrets.SSH_PORT }} ${{ secrets.HOST }} >> ~/.ssh/known_hosts 
         scp -P ${{ secrets.SSH_PORT }} -r * ${{ secrets.USER }}@${{ secrets.HOST }}:/opt/servers/qoqbot
-        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.USER }}@${{ secrets.HOST }} 'cd /opt/servers/qoqbot && source ~/.bashrc && npm install && pm2 restart qoqbot'
+        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.USER }}@${{ secrets.HOST }} 'cd /opt/servers/qoqbot && /home/${{ secrets.USER }}/.nvm/nvm.sh && npm install && pm2 restart qoqbot'

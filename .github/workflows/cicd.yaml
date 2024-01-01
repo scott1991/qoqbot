@@ -33,7 +33,7 @@ jobs:
         mkdir -p ~/.ssh/ && echo "mkdir succeeded"
         echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa  && echo "save key succeeded"
         chmod 600 ~/.ssh/id_rsa && echo "chmod key succeeded"
-        ssh-keyscan -H -t rsa ${{ secrets.HOST }} >> ~/.ssh/known_hosts 
+        ssh-keyscan -H -t rsa -p ${{ secrets.SSH_PORT }} ${{ secrets.HOST }} >> ~/.ssh/known_hosts 
         echo "keyscan succeeded"
         scp -P ${{ secrets.SSH_PORT }} -r * ${{ secrets.USER }}@${{ secrets.HOST }}:/opt/servers/qoqbot
         echo "scp succeeded"

@@ -4,7 +4,7 @@ const utils = require('../../service/utils');
 class SampleCommand extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
-      name: '!74黑白龜',
+      name: '!74新龜',
       group: 'samples',
       description: '給新觀眾認識聊天室的規則',
     });
@@ -12,7 +12,7 @@ class SampleCommand extends RateLimitedTwitchChatCommand {
 
   async delayRun(msg) {
     const messages = [
-      '給剛來的觀眾了解這台的規則，基本上這台不會有新觀眾，⚫龜=被送訂閱的，⚫龜=連續被送兩個月的，如果你是黑白🐢請自覺的禁言自己，有顏色的🐢才有話語權',
+      '給剛來的觀眾了解這台的規則，基本上這台不會有新觀眾，⚪龜=被送訂閱的，⚫龜=連續被送兩個月的，如果你是黑白🐢請自覺的禁言自己，有顏色的🐢才有話語權',
       '麻煩請遵守聊天室守則，黑白🐢 是禁止發言的，維持良好聊天風氣人人有責 Twitch 󠀀',
       '📢 好消息！📢 好消息！📢 特大好消息！黑白🐢不要打字 peepoStop',
       '⚠️注意 收到免費的訂閱有可能會讓您成為 黑白🐢 ',

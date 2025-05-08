@@ -6,7 +6,7 @@ const JSONProvider = require('./provider/JSONProvider');
 var client = new TwitchCommandoClient({
     username: 'cakebaobao',
     oauth: oauth,
-    channels: [ 'cakebaobao'],
+    channels: [ 'sweetcampercs', 'cakebaobao'],
     botOwners: [
         'cakebaobao'
     ],

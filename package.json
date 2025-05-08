@@ -13,8 +13,6 @@
     "got": "^11.5.2",
     "moment": "^2.27.0",
     "moment-duration-format": "^2.3.2",
-    "sqlite": "^4.0.23",
-    "sqlite3": "^5.0.2",
-    "twitch-commando": "^1.0.12"
+    "twitch-commando": "github:scott1991/twitch-commando"
   }
 }

@@ -1,7 +1,9 @@
 const fs = require('fs');
+const { SettingsProvider } = require('twitch-commando');
 
-class JSONProvider {
+class JSONProvider extends SettingsProvider {
     constructor(filePath) {
+        super();
         this.filePath = filePath;
         this.data = {};
     }
@@ -18,21 +20,32 @@ class JSONProvider {
         fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 4));
     }
 
-    get(key, defaultValue = null) {
-        return this.data[key] || defaultValue;
+    async get(channel, key, defaultValue = null) {
+        if (this.data[channel] && this.data[channel][key] !== undefined) {
+            return this.data[channel][key];
+        }
+        return defaultValue;
     }
 
-    set(key, value) {
-        this.data[key] = value;
+    async set(channel, key, value) {
+        if (!this.data[channel]) {
+            this.data[channel] = {};
+        }
+        this.data[channel][key] = value;
         this._save();
     }
 
-    delete(key) {
-        delete this.data[key];
-        this._save();
+    async remove(channel, key) {
+        if (this.data[channel] && this.data[channel][key] !== undefined) {
+            delete this.data[channel][key];
+            if (Object.keys(this.data[channel]).length === 0) {
+                delete this.data[channel];
+            }
+            this._save();
+        }
     }
 
-    clear() {
+    async clear() {
         this.data = {};
         this._save();
     }

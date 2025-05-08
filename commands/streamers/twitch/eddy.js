@@ -11,7 +11,7 @@ const {RateLimitedTwitchChatCommand} = require('../../../service/rateLimited');
 class ViwersCommand extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
-      name: '!神之愛圖奇人數',
+      name: '!!神之愛圖奇人數',
       // aliases: [ '!eddy人數', '!Eddy人數', '!EddyTommy人數', '!愛哥人數', '!愛醬人數','eddytommy人數' ],
       group: 'streamers',
       description: ''
@@ -25,7 +25,7 @@ class ViwersCommand extends RateLimitedTwitchChatCommand {
         msg.reply(`神之愛台現在有:${info.viewers}人`);
       }else{
         if ( info.time ){
-          msg.reply('神之愛現在沒開台，上次關台是'+ moment( info.time).format("yyyy-MM-DD HH:mm"));  
+          msg.reply('神之愛現在沒開台，上次關台是t'+ moment( info.time).format("yyyy-MM-DD HH:mm"));  
         }else{
           msg.reply('神之愛現在沒開台');
         } 

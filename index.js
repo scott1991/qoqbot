@@ -1,10 +1,11 @@
 const {
     TwitchCommandoClient, CommandoSQLiteProvider
 } = require('twitch-commando');
-const sqlite = require('sqlite');
-const sqlite3 = require('sqlite3');
+//const sqlite = require('sqlite');
+//const sqlite3 = require('sqlite3');
 const path = require('path');
 const { oauth } = require('./config.json');
+const JSONProvider = require('./provider/JSONProvider');
 
 var client = new TwitchCommandoClient({
     username: 'cakebaobao',
@@ -48,9 +49,15 @@ client.registerCommandsIn(path.join(__dirname, 'commands'));
 //     })
 //     .then(() => client.connect());
 
+// async function setupAndConnect() {
+//     const db = await sqlite.open({ driver: sqlite3.Database, filename: path.join(__dirname, 'database.sqlite3')});
+//     await client.setProvider(new CommandoSQLiteProvider(db));
+//     client.connect();
+// }
 async function setupAndConnect() {
-    const db = await sqlite.open({ driver: sqlite3.Database, filename: path.join(__dirname, 'database.sqlite3')});
-    await client.setProvider(new CommandoSQLiteProvider(db));
+    const provider = new JSONProvider(path.join(__dirname, 'database.json'));
+    await provider.init(client); // Initialize the JSONProvider
+    client.setProvider(provider); // Set the JSONProvider as the client's provider
     client.connect();
 }
 

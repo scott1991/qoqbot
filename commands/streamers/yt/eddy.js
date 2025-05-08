@@ -11,8 +11,8 @@ const {RateLimitedTwitchChatCommand} = require('../../../service/rateLimited');
 class ViwersCommand extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
-      name: '!神之愛人數',
-      aliases: [ '!eddy人數', '!Eddy人數', '!EddyTommy人數', '!愛哥人數', '!愛醬人數','eddytommy人數' ],
+      name: '!!神之愛人數',
+      //aliases: [ '!eddy人數', '!Eddy人數', '!EddyTommy人數', '!愛哥人數', '!愛醬人數','eddytommy人數' ],
       group: 'streamers',
       description: ''
     });
@@ -22,7 +22,7 @@ class ViwersCommand extends RateLimitedTwitchChatCommand {
     try {
       let info = await ytSvc.getLiveInfoByChannelId('UCiJ0I4szok8aMxsWU8iTF_Q');
       if ( info.actualEndTime ){
-        msg.reply('神之愛現在沒開台，上次關台是'+ moment(info.actualEndTime).format("yyyy-MM-DD HH:mm") );   
+        msg.reply('神之愛現在沒開台，上次關台是t'+ moment(info.actualEndTime).format("yyyy-MM-DD HH:mm") );   
       }else{
         msg.reply(`神之愛台現在有:${info.currentViewers}人`);
       }

@@ -2,6 +2,7 @@ const { TwitchChatCommand } = require('twitch-commando');
 const util = require('util');
 const moment = require('moment');
 const twitchSvc = require('../../../service/twitchSvc');
+const ytSvc = require('../../../service/ytSvc');
 const momentDurationFormatSetup = require("moment-duration-format");
 momentDurationFormatSetup(moment);
 moment.locale('zh-tw');

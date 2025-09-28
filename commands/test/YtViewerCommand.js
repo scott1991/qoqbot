@@ -26,7 +26,7 @@ const commands = configs.map((cfg, index) => {
 
     async delayRun(msg) {
       try {
-        let info = await ytSvc.getLiveInfoByChannelId(this.cfg.channelId);
+        let info = await ytSvc.getLiveInfoByChannelId(this.cfg.youtubeChannelId);
         if (info.actualEndTime) {
           msg.reply(`${this.cfg.displayName}現在沒開台，上次關台是${moment(info.actualEndTime).format("yyyy-MM-DD HH:mm")}`);
         } else {

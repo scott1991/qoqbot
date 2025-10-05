@@ -11,8 +11,8 @@ const {RateLimitedTwitchChatCommand} = require('../../../service/rateLimited');
 class ViwersCommand extends RateLimitedTwitchChatCommand {
   constructor(client) {
     super(client, {
-      name: '!9Q人數',
-      aliases: [ '!9QOQ人數', '!睪慶人數', '!陳澤慶人數' ],
+      name: '!z9Q人數',
+      aliases: [ '!z9QOQ人數', '!睪慶人數', '!陳澤慶人數' ],
       group: 'streamers',
       description: ''
     });
@@ -22,12 +22,12 @@ class ViwersCommand extends RateLimitedTwitchChatCommand {
     try {
       let info = await twitchSvc.getLiveViewersCountByName('9qoq');
       if ( info.viewers ){
-        msg.reply(`9Q台現在有:${info.viewers}人`);
+        msg.reply(`9QOQ台現在有:${info.viewers}人`);
       }else{
         if ( info.time ){
-          msg.reply('9Q現在沒開台，上次關台是'+ moment( info.time).format("yyyy-MM-DD HH:mm"));  
+          msg.reply('9QOQ現在沒開台，上次關台是'+ moment( info.time).format("yyyy-MM-DD HH:mm"));  
         }else{
-          msg.reply('9Q現在沒開台');
+          msg.reply('9QOQ現在沒開台');
         } 
       }
        

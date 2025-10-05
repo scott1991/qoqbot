@@ -1,16 +1,16 @@
 module.exports = [
   {
-    displayName: '百鬼あやめ',
-    command: '!百鬼人數a',
-    aliases: ['!Ayame人數', '!ayame人數'],
-    youtubeChannelId: 'UC7fk0CB07ly8oSl0aqKkqFg',
-    twitchUsername: null // Add Twitch username here when needed
+    displayName: '神之愛',
+    command: '!a神之愛人數',
+    aliases: ['!eddy人數', '!Eddy人數', '!EddyTommy人數', '!愛哥人數', '!愛醬人數', 'edytommy人數'],
+    youtubeChannelId: 'UCiJ0I4szok8aMxsWU8iTF_Q',
+    twitchUsername: 'eddytommy30'
   },
   {
-    displayName: '湊あくあ',
-    command: '!Aqua人數',
-    aliases: ['!あくあ人數', '!阿垮人數', '!阿夸人數', '!aqua人數'],
-    youtubeChannelId: 'UC1opHUrw8rvnsadT-iGp7Cg',
-    twitchUsername: null // Add Twitch username here when needed
+    displayName: '9QOQ',
+    command: '!a9QOQ人數',
+    aliases: ['!9Q人數', '!睪慶人數', '!陳澤慶人數'],
+    youtubeChannelId: null,
+    twitchUsername: '9qoq'
   }
 ];

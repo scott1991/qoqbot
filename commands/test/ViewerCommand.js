@@ -3,18 +3,15 @@ const moment = require('moment');
 const ytSvc = require('../../service/ytSvc');
 const twitchSvc = require('../../service/twitchSvc');
 const { RateLimitedTwitchChatCommand } = require('../../service/rateLimited');
-const momentDurationFormatSetup = require("moment-duration-format");
+const momentDurationFormatSetup = require('moment-duration-format');
 momentDurationFormatSetup(moment);
 moment.locale('zh-tw');
 
 const configs = require('./config');
+const extrasFlag = Symbol.for('qoqbot.viewerCommandsRegistered');
 
-// Create command classes
-const commands = configs.map((cfg, index) => {
-  // Create a class with a unique name for each config
-  const className = `ViewerCommand${index}`;
-  
-  const CommandClass = class extends RateLimitedTwitchChatCommand {
+const createCommandClass = cfg => {
+  return class ViewerCommand extends RateLimitedTwitchChatCommand {
     constructor(client) {
       super(client, {
         name: cfg.command,
@@ -30,7 +27,6 @@ const commands = configs.map((cfg, index) => {
         let infoYt = null;
         let infoTwitch = null;
 
-        // Check YouTube if channel ID is provided
         if (this.cfg.youtubeChannelId) {
           try {
             infoYt = await ytSvc.getLiveInfoByChannelId(this.cfg.youtubeChannelId);
@@ -39,7 +35,6 @@ const commands = configs.map((cfg, index) => {
           }
         }
 
-        // Check Twitch if username is provided
         if (this.cfg.twitchUsername) {
           try {
             infoTwitch = await twitchSvc.getLiveViewersCountByName(this.cfg.twitchUsername);
@@ -48,45 +43,70 @@ const commands = configs.map((cfg, index) => {
           }
         }
 
-        // Priority: YouTube live > Twitch live > offline status
         if (infoYt && infoYt.currentViewers && !infoYt.actualEndTime) {
           msg.reply(`${this.cfg.displayName}YT現在有:${infoYt.currentViewers}人`);
-        } else if (infoTwitch && infoTwitch.viewers) {
-          msg.reply(`${this.cfg.displayName}圖奇現在有:${infoTwitch.viewers}人`);
-        } else {
-          // Handle offline status
-          let offlineStr = `${this.cfg.displayName}現在沒開台`;
-          
-          if (infoYt && infoYt.actualEndTime) {
-            offlineStr += `，YT上次關台是${moment(infoYt.actualEndTime).format("yyyy-MM-DD HH:mm")}`;
-          }
-          
-          if (infoTwitch && infoTwitch.time) {
-            offlineStr += `，圖奇上次關台是${moment(infoTwitch.time).format("yyyy-MM-DD HH:mm")}`;
-          }
-          
-          msg.reply(offlineStr);
+          return;
         }
+
+        if (infoTwitch && infoTwitch.viewers) {
+          msg.reply(`${this.cfg.displayName}圖奇現在有:${infoTwitch.viewers}人`);
+          return;
+        }
+
+        let offlineStr = `${this.cfg.displayName}現在沒開台`;
+
+        if (infoYt && infoYt.actualEndTime) {
+          offlineStr += `，YT上次關台是${moment(infoYt.actualEndTime).format('yyyy-MM-DD HH:mm')}`;
+        }
+
+        if (infoTwitch && infoTwitch.time) {
+          offlineStr += `，圖奇上次關台是${moment(infoTwitch.time).format('yyyy-MM-DD HH:mm')}`;
+        }
+
+        msg.reply(offlineStr);
       } catch (e) {
         msg.reply('我找不到欸');
         console.log(util.inspect(e, { depth: 3 }));
       }
     }
   };
-  
-  // Set the class name for better debugging
-  Object.defineProperty(CommandClass, 'name', { value: className });
-  
-  return CommandClass;
-});
+};
 
-// Export the commands - twitch-commando expects a single export per file
-// So we export the first command as default and add others as properties
-module.exports = commands[0];
+const commandClasses = configs.map(createCommandClass);
 
-// Add additional commands as properties
-commands.slice(1).forEach((cmd, index) => {
-  module.exports[`Command${index + 1}`] = cmd;
-});
+if (commandClasses.length === 0) {
+  throw new Error('ViewerCommand requires at least one configuration entry.');
+}
+
+const PrimaryCommand = commandClasses[0];
+
+class ViewerCommand extends PrimaryCommand {
+  constructor(client) {
+    super(client);
+    this.registerExtraCommands(client);
+  }
+
+  registerExtraCommands(client) {
+    if (!client || !Array.isArray(client.commands) || client[extrasFlag]) {
+      return;
+    }
+
+    commandClasses.slice(1).forEach(CommandClass => {
+      const extraCommand = new CommandClass(client);
+      if (client.logger && typeof client.logger.info === 'function') {
+        client.logger.info(
+          `Register command ${extraCommand.options.group}:${extraCommand.options.name}`
+        );
+      } else {
+        console.log(`Register command ${extraCommand.options.group}:${extraCommand.options.name}`);
+      }
+      client.commands.push(extraCommand);
+    });
+
+    client[extrasFlag] = true;
+  }
+}
+
+module.exports = ViewerCommand;
 
 console.log('Loaded ViewerCommand.js, commands:', configs.length);

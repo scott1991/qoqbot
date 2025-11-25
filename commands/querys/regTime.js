@@ -28,7 +28,7 @@ class TwitchAccountRegistrationTime extends RateLimitedTwitchChatCommand {
     try {
       let name = arg1 ? arg1 : msg.author.username;
       this.client.say(msg.channel.name, '!accountage ' + name); // 在聊天室中發送訊息
-      /*
+      
       let userData = await twitchSvc.getUserByName(name);
       if (userData.body.createdAt) {
         regdt = moment(userData.body.createdAt);
@@ -37,7 +37,7 @@ class TwitchAccountRegistrationTime extends RateLimitedTwitchChatCommand {
       } else {
         msg.reply('我找不到欸');
       }
-      */
+      
     } catch (e) {
       msg.reply('我找不到欸');
       console.log(util.inspect(e, { depth: 3 }))

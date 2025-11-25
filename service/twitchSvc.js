@@ -64,7 +64,34 @@ async function getLiveViewersCountByName(username) {
 
 }
 
-
+async function getStreamStartTimeByName(username) {
+  try {
+    const streamdata = await getStreamDataGQL(username);
+    console.log('GQL Response for', username, ':', JSON.stringify(streamdata.body, null, 2));
+    
+    if (streamdata.body && streamdata.body.data && streamdata.body.data.channel) {
+      if (streamdata.body.data.channel.stream) {
+        // Channel is currently live
+        return {
+          isLive: true,
+          startTime: streamdata.body.data.channel.stream.createdAt
+        };
+      } else if (streamdata.body.data.channel.lastBroadcast) {
+        // Channel is offline
+        return {
+          isLive: false,
+          lastStreamTime: streamdata.body.data.channel.lastBroadcast.startedAt
+        };
+      }
+    }
+    
+    // Channel not found or no data
+    throw new Error('Channel not found');
+  } catch (error) {
+    console.log(error.response);
+    throw error;
+  }
+}
 
 async function getStreamDataGQL(username) {
   const query = `
@@ -95,7 +122,8 @@ async function getStreamDataGQL(username) {
 
 module.exports = {
   getUserByName: getUserByName_twitchinsights,
-  getLiveViewersCountByName: getLiveViewersCountByName
+  getLiveViewersCountByName: getLiveViewersCountByName,
+  getStreamStartTimeByName: getStreamStartTimeByName
 }
 
 // curl 'https://api.twitchinsights.net/v1/user/status/twitchdev'

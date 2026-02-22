@@ -327,5 +327,12 @@ module.exports = [
     aliases: ['!陌生人人數', '!團勳人數'],
     youtubeChannelId: 'UCw-N9mI3Om-AN2xgkEoSDsg',
     twitchUsername: null
+  },
+  {
+    displayName: '諾亞',
+    command: '!諾亞人數',
+    aliases: ['!諾亞亞人數', '!noya人數', '!Noya人數', '!NOYA人數', '!詩亞人數', '!詩亞亞人數'],
+    youtubeChannelId: null,
+    twitchUsername: 'noya'
   }
 ];

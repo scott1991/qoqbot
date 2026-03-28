@@ -1,29 +1,119 @@
 # qoqbot
 
-qoqBot 是一款使用 Node.js 建立的 Twitch 聊天機器人，並基於 `twitch-commando` 開發。它具有多種功能，包括查詢特定 Twitch 和 YouTube 直播者的觀看人數、他們最後一次結束直播的時間，或是一般的固定回覆，等等。該機器人具有高度可定制性，命令存儲在單獨的腳本中，便於修改。
+qoqbot 是一個用 Node.js 撰寫的 Twitch 聊天機器人，基於 `twitch-commando`。目前主要功能包含：
+
+- Twitch / YouTube 直播者觀看數查詢
+- 註冊時間、追隨時間等查詢命令
+- 固定回覆類命令
+- 可選的 AI chat 回覆功能
+
+## Requirements
+
+- Node.js 18
+- npm 10
+
+專案根目錄已提供 `.nvmrc`，可在目錄內執行：
+
+```bash
+nvm use
+```
+
+如果本機還沒有對應版本，也可以先執行：
+
+```bash
+nvm install 18
+nvm use 18
+```
 
 ## Install
 
-1. 將 clone repository 或使用github網頁打包zip下載到你的電腦。
+1. clone 此 repo。
+2. 安裝依賴：
 
-2. 至機器人的目錄並運行 `npm install` 以安裝必要的dependency。請確保您的機器上已安裝 Node.js 和 npm。
+```bash
+npm install
+```
 
-3. 複製或重新命名 `config.json.expmple` 文件，改為`config.json`，並添加您的 Twitch OAuth token, Youtube api key和其他必要的值。
+3. 複製 [`config.example.json`](/home/cake/code/node/qoqbot/config.example.json) 為 `config.json`。
+4. 在 `config.json` 填入 Twitch OAuth、YouTube API key 與其他必要設定。
 
-4. 運行 `node index.js` 以啟動機器人。
+## Run
 
-## Feature
+啟動 bot：
 
-1. **查詢直播者資料**：機器人可以查詢特定 Twitch 和 YouTube 直播者的觀眾數以及他們最後一次結束直播的時間。命令存儲在 `commands/streamers/twitch` 和 `commands/streamers/yt` 目錄中，每位直播者都有自己的腳本。
+```bash
+npm start
+```
 
-   例如，'!龜狗人數' 命令可用於查詢 Twitch 直播者 'sweetcampercs' 的觀眾數，而 '!Tama人數' 命令則可用於查詢 YouTube 直播者 '久遠たま' 的觀眾數，可以參考現有檔案增加。
+或：
 
-2. **問候語**：當調用 '!安安安安' 命令時，機器人可以回應問候語。可以參考此命令製作固定回覆。
+```bash
+node index.js
+```
 
-3. **冷卻時間**：機器人可以使用 '!cd' 命令顯示當前命令的冷卻時間，它讀取config中的`cd`。
+`npm test` 目前只是 placeholder，不能當成正式測試。
 
-4. **註冊時間與追隨時間**：機器人可以查詢聊天室中用戶的註冊時間和追隨時間。使用 '!註冊時間' 和 '!追隨時間'。這兩個命令其實是轉發給其他聊天室機器人，所以也是固定回覆的一種。
+## Project Layout
 
-## 授權
+- [`index.js`](/home/cake/code/node/qoqbot/index.js)：bot 進入點，初始化 client、provider 與 AI responder
+- [`commands/streamers/config.js`](/home/cake/code/node/qoqbot/commands/streamers/config.js)：直播者命令定義
+- [`commands/streamers/ViewerCommand.js`](/home/cake/code/node/qoqbot/commands/streamers/ViewerCommand.js)：批次註冊 viewer 類命令
+- [`commands/querys/`](/home/cake/code/node/qoqbot/commands/querys)：查詢類命令
+- [`commands/samples/`](/home/cake/code/node/qoqbot/commands/samples)：固定回覆或簡單範例命令
+- [`service/`](/home/cake/code/node/qoqbot/service/)：共用 service，例如 Twitch / YouTube 查詢與 AI chat responder
+- [`provider/JSONProvider.js`](/home/cake/code/node/qoqbot/provider/JSONProvider.js)：簡單 JSON provider
+- [`database.json`](/home/cake/code/node/qoqbot/database.json)：provider 使用的資料檔
 
-該項目根據 ISC 授權條款授權。
+## Commands
+
+### 直播者查詢
+
+直播者 viewer 指令不是一個人一個檔案，而是集中定義在 [`commands/streamers/config.js`](/home/cake/code/node/qoqbot/commands/streamers/config.js)。
+
+例如：
+
+- `!龜狗人數`
+- `!Tama人數`
+
+如果要新增或修改直播者命令，優先改 `config.js`，不要另外新增一堆 command 檔案。
+
+### 其他查詢與固定回覆
+
+目前 repo 內還有：
+
+- `!註冊時間`
+- `!追隨時間`
+- `!cd`
+- 其他在 [`commands/samples/`](/home/cake/code/node/qoqbot/commands/samples/) 的固定回覆命令
+
+## AI Chat
+
+AI chat 設定在 `config.json` 的 `aichat` 區塊，範例可參考 [`config.example.json`](/home/cake/code/node/qoqbot/config.example.json)。
+
+目前設計是：
+
+- 只保留每個 channel 最新的 `max_context_messages` 則非指令訊息
+- cooldown 期間持續收集訊息，但不送出 AI
+- 累積到 `min_messages` 則新訊息後，且 cooldown 已過，才允許 activity trigger
+- mention bot 名稱也可以觸發，但同樣受 cooldown 限制
+
+建議測試期先用：
+
+- `enabled: true`
+- `dry_run: true`
+
+這樣只會在 log 中看到 AI 回覆，不會真的發到聊天室。
+
+系統 prompt 預設由 [`prompts/aichat-system.txt`](/home/cake/code/node/qoqbot/prompts/aichat-system.txt) 載入。
+
+## Manual Testing
+
+目前沒有完整自動化測試。修改後建議：
+
+1. 啟動 bot。
+2. 在安全的 Twitch channel 手動測試命令。
+3. 若改到 AI chat，先用 `dry_run: true` 觀察 log 與觸發頻率。
+
+## License
+
+ISC

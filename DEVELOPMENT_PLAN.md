@@ -1,4 +1,4 @@
-# Development Plan: qoq-commando - A Lightweight Twitch Bot Framework
+# Development Plan: qoq-commando - A Lightweight Twitch Bot Framework (CURRENTLY PENDING)
 
 ## 1. Overview
 

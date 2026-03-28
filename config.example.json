@@ -1,0 +1,28 @@
+{
+  "client_id":"",
+  "oauth": "",
+  "yt_api_key":"",
+  "cd": 10000,
+  "aichat": {
+    "enabled": true,
+    "dry_run": true,
+    "reasoning": {
+      "enabled": false,
+      "effort": "none"
+    },
+    "base_url": "https://example.com/v1",
+    "api_key": "",
+    "model": "gpt-4o-mini",
+    "bot_names": [
+      "cakebaobao",
+      "qoqbot"
+    ],
+    "channels": ["sweetcampercs"],
+    "min_messages": 5,
+    "cooldown_ms": 120000,
+    "max_context_messages": 20,
+    "max_output_chars": 120,
+    "temperature": 0.8,
+    "system_prompt_file": "prompts/aichat-system.txt"
+  }
+}

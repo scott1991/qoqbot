@@ -17,6 +17,12 @@ const DEFAULT_CONFIG = {
   channels: [],
   min_messages: 3,
   cooldown_ms: 180000,
+  max_retries: 1,
+  retry_delay_ms: 1000,
+  request_timeout_ms: 15000,
+  append_response_model: false,
+  retry_response_model_keywords: [],
+  max_response_model_retries: 0,
   max_context_messages: 30,
   max_output_chars: 180,
   temperature: 0.8,
@@ -89,6 +95,12 @@ function serializeForLog(value) {
   }
 }
 
+function wait(ms) {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function loadSystemPrompt(promptFile, fallbackPrompt) {
   if (!promptFile) {
     return fallbackPrompt;
@@ -142,6 +154,17 @@ class AIChatResponder {
     merged.reasoning.effort = String(merged.reasoning.effort || DEFAULT_CONFIG.reasoning.effort).trim() || DEFAULT_CONFIG.reasoning.effort;
     merged.min_messages = Math.max(1, getFiniteNumber(merged.min_messages, DEFAULT_CONFIG.min_messages));
     merged.cooldown_ms = Math.max(0, getFiniteNumber(merged.cooldown_ms, DEFAULT_CONFIG.cooldown_ms));
+    merged.max_retries = Math.max(0, Math.floor(getFiniteNumber(merged.max_retries, DEFAULT_CONFIG.max_retries)));
+    merged.retry_delay_ms = Math.max(0, getFiniteNumber(merged.retry_delay_ms, DEFAULT_CONFIG.retry_delay_ms));
+    merged.request_timeout_ms = Math.max(1, getFiniteNumber(merged.request_timeout_ms, DEFAULT_CONFIG.request_timeout_ms));
+    merged.append_response_model = Boolean(merged.append_response_model);
+    merged.retry_response_model_keywords = Array.isArray(merged.retry_response_model_keywords)
+      ? merged.retry_response_model_keywords.map(value => String(value || '').trim().toLowerCase()).filter(Boolean)
+      : DEFAULT_CONFIG.retry_response_model_keywords.slice();
+    merged.max_response_model_retries = Math.max(0, Math.floor(getFiniteNumber(
+      merged.max_response_model_retries,
+      DEFAULT_CONFIG.max_response_model_retries
+    )));
     merged.max_context_messages = Math.max(1, getFiniteNumber(merged.max_context_messages, DEFAULT_CONFIG.max_context_messages));
     merged.max_output_chars = Math.max(1, getFiniteNumber(merged.max_output_chars, DEFAULT_CONFIG.max_output_chars));
     merged.temperature = getFiniteNumber(merged.temperature, DEFAULT_CONFIG.temperature);
@@ -325,17 +348,37 @@ class AIChatResponder {
       .trim();
   }
 
-  sanitizeReply(reply) {
+  sanitizeReply(reply, maxLength) {
     if (!reply) {
       return '';
     }
+
+    const limit = Number.isFinite(maxLength) ? Math.max(0, maxLength) : this.config.max_output_chars;
 
     return String(reply)
       .replace(/\r\n/g, '\n')
       .replace(/\n+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
-      .slice(0, this.config.max_output_chars);
+      .slice(0, limit);
+  }
+
+  formatReply(reply, responseModel) {
+    const sanitizedReply = this.sanitizeReply(reply);
+
+    if (!sanitizedReply || !this.config.append_response_model || !responseModel) {
+      return sanitizedReply;
+    }
+
+    const suffix = ' [' + String(responseModel).trim() + ']';
+
+    if (suffix.length >= this.config.max_output_chars) {
+      return suffix.slice(0, this.config.max_output_chars);
+    }
+
+    const trimmedReply = this.sanitizeReply(reply, this.config.max_output_chars - suffix.length);
+
+    return trimmedReply + suffix;
   }
 
   formatApiError(error) {
@@ -369,7 +412,41 @@ class AIChatResponder {
     ].filter(Boolean).join(' ');
   }
 
-  async requestReply(input) {
+  isRetryableError(error) {
+    if (!error) {
+      return false;
+    }
+
+    const statusCode = error.response && error.response.statusCode ? Number(error.response.statusCode) : 0;
+
+    if (statusCode === 408 || statusCode === 409 || statusCode === 425 || statusCode === 429 || statusCode >= 500) {
+      return true;
+    }
+
+    const retryableCodes = new Set([
+      'ETIMEDOUT',
+      'ECONNRESET',
+      'ECONNREFUSED',
+      'EAI_AGAIN',
+      'ENOTFOUND',
+      'ECONNABORTED'
+    ]);
+
+    return retryableCodes.has(String(error.code || '').toUpperCase()) || error.name === 'TimeoutError';
+  }
+
+  shouldRetryResponse(result) {
+    const responseModel = String(result && result.responseModel ? result.responseModel : '').toLowerCase();
+    const keywords = this.config.retry_response_model_keywords || [];
+
+    if (!responseModel || keywords.length === 0) {
+      return false;
+    }
+
+    return keywords.some(keyword => responseModel.includes(keyword));
+  }
+
+  async sendReplyRequest(input) {
     const headers = {
       'Content-Type': 'application/json'
     };
@@ -398,7 +475,7 @@ class AIChatResponder {
         responseType: 'json',
         headers,
         timeout: {
-          request: 15000
+          request: this.config.request_timeout_ms
         }
       });
     } catch (error) {
@@ -425,6 +502,75 @@ class AIChatResponder {
       responseModel: body.model || '',
       responseProvider: body.provider || ''
     };
+  }
+
+  async requestReply(input) {
+    let requestAttempt = 0;
+    let errorRetries = 0;
+    let responseModelRetries = 0;
+
+    while (true) {
+      requestAttempt += 1;
+
+      try {
+        const result = await this.sendReplyRequest(input);
+
+        if (this.shouldRetryResponse(result) && responseModelRetries < this.config.max_response_model_retries) {
+          responseModelRetries += 1;
+
+          console.log(
+            '[aichat] retry blocked-model channel=%s reason=%s attempt=%d blocked_model_retry=%d max_blocked_model_retries=%d delay_ms=%d response_model=%s',
+            input.channel,
+            input.trigger,
+            requestAttempt,
+            responseModelRetries,
+            this.config.max_response_model_retries,
+            this.config.retry_delay_ms,
+            result.responseModel || ''
+          );
+
+          if (this.config.retry_delay_ms > 0) {
+            await wait(this.config.retry_delay_ms);
+          }
+
+          continue;
+        }
+
+        if (this.shouldRetryResponse(result) && this.config.max_response_model_retries > 0) {
+          console.log(
+            '[aichat] blocked-model retries exhausted channel=%s reason=%s blocked_model_retries=%d response_model=%s',
+            input.channel,
+            input.trigger,
+            responseModelRetries,
+            result.responseModel || ''
+          );
+        }
+
+        return result;
+      } catch (error) {
+        if (!this.isRetryableError(error) || errorRetries >= this.config.max_retries) {
+          throw error;
+        }
+
+        errorRetries += 1;
+
+        console.log(
+          '[aichat] retry channel=%s reason=%s attempt=%d error_retry=%d max_error_retries=%d delay_ms=%d code=%s status=%s',
+          input.channel,
+          input.trigger,
+          requestAttempt,
+          errorRetries,
+          this.config.max_retries,
+          this.config.retry_delay_ms,
+          error.code || '',
+          error.response && error.response.statusCode ? error.response.statusCode : ''
+        );
+
+        if (this.config.retry_delay_ms > 0) {
+          await wait(this.config.retry_delay_ms);
+        }
+      }
+    }
   }
 
   async handleMessage(input) {
@@ -498,6 +644,8 @@ class AIChatResponder {
         return null;
       }
 
+      const outputReply = this.formatReply(reply, result && result.responseModel ? result.responseModel : '');
+
       state.messagesSinceReply = 0;
 
       console.log(
@@ -509,7 +657,7 @@ class AIChatResponder {
         result.responseProvider || '',
         result.responseId || ''
       );
-      return reply;
+      return outputReply;
     } catch (error) {
       console.log('[aichat] api failure channel=%s reason=%s %s', channel, trigger, this.formatApiError(error));
       return null;

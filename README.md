@@ -96,6 +96,10 @@ AI chat 設定在 `config.json` 的 `aichat` 區塊，範例可參考 [`config.e
 - cooldown 期間持續收集訊息，但不送出 AI
 - 累積到 `min_messages` 則新訊息後，且 cooldown 已過，才允許 activity trigger
 - mention bot 名稱也可以觸發，但同樣受 cooldown 限制
+- API 請求失敗時，預設會對 timeout / 429 / 5xx 這類可重試錯誤自動重試一次，可用 `max_retries` 與 `retry_delay_ms` 調整
+- 可用 `append_response_model` 控制是否在送出的聊天訊息尾端附上 `response model` 名稱
+- 若 `response model` 名稱包含 `retry_response_model_keywords` 任一關鍵字，會走獨立的 model 重試池，可用 `max_response_model_retries` 調整，不占用一般 API 錯誤重試次數
+- API request timeout 可用 `request_timeout_ms` 調整，預設是 `15000`
 
 建議測試期先用：
 

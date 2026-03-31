@@ -363,14 +363,22 @@ class AIChatResponder {
       .slice(0, limit);
   }
 
+  formatResponseModel(responseModel) {
+    return String(responseModel || '')
+      .trim()
+      .replace(/:free\b/g, '')
+      .trim();
+  }
+
   formatReply(reply, responseModel) {
     const sanitizedReply = this.sanitizeReply(reply);
+    const displayModel = this.formatResponseModel(responseModel);
 
-    if (!sanitizedReply || !this.config.append_response_model || !responseModel) {
+    if (!sanitizedReply || !this.config.append_response_model || !displayModel) {
       return sanitizedReply;
     }
 
-    const suffix = ' [' + String(responseModel).trim() + ']';
+    const suffix = ' [' + displayModel + ']';
 
     if (suffix.length >= this.config.max_output_chars) {
       return suffix.slice(0, this.config.max_output_chars);
@@ -403,7 +411,7 @@ class AIChatResponder {
       'provider_message=' + truncateForLog(bodyMessage, 300),
       'request_id=' + requestId,
       'url=' + (meta.url || ''),
-      'model=' + (meta.model || ''),
+      'model=' + this.formatResponseModel(meta.model || ''),
       'context_count=' + String(meta.contextCount || 0),
       'oldest_age_ms=' + String(meta.oldestAgeMs || 0),
       'context_preview=' + serializeForLog(meta.contextPreview || ''),
@@ -526,7 +534,7 @@ class AIChatResponder {
             responseModelRetries,
             this.config.max_response_model_retries,
             this.config.retry_delay_ms,
-            result.responseModel || ''
+            this.formatResponseModel(result.responseModel || '')
           );
 
           if (this.config.retry_delay_ms > 0) {
@@ -542,7 +550,7 @@ class AIChatResponder {
             input.channel,
             input.trigger,
             responseModelRetries,
-            result.responseModel || ''
+            this.formatResponseModel(result.responseModel || '')
           );
         }
 
@@ -621,7 +629,6 @@ class AIChatResponder {
     }
 
     if (state.lastTriggerAt && now - state.lastTriggerAt < this.config.cooldown_ms) {
-      console.log('[aichat] skip cooldown channel=%s trigger=%s count=%d', channel, trigger, activityCount);
       return null;
     }
 
@@ -653,7 +660,7 @@ class AIChatResponder {
         channel,
         trigger,
         this.isDryRun(),
-        result.responseModel || '',
+        this.formatResponseModel(result.responseModel || ''),
         result.responseProvider || '',
         result.responseId || ''
       );

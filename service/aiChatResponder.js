@@ -57,6 +57,14 @@ function getFiniteNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function hasOwn(object, key) {
+  return !!object && Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
 function resolveConfigPath(filePath) {
   if (!filePath) {
     return '';
@@ -149,9 +157,19 @@ class AIChatResponder {
       : [];
     merged.debug = Boolean(merged.debug);
     merged.dry_run = Boolean(merged.dry_run);
-    merged.reasoning = Object.assign({}, DEFAULT_CONFIG.reasoning, merged.reasoning || {});
-    merged.reasoning.enabled = Boolean(merged.reasoning.enabled);
-    merged.reasoning.effort = String(merged.reasoning.effort || DEFAULT_CONFIG.reasoning.effort).trim() || DEFAULT_CONFIG.reasoning.effort;
+
+    if (!hasOwn(config, 'reasoning')) {
+      merged.reasoning = Object.assign({}, DEFAULT_CONFIG.reasoning);
+    } else if (config.reasoning === null) {
+      merged.reasoning = null;
+    } else if (isPlainObject(config.reasoning) && Object.keys(config.reasoning).length === 0) {
+      merged.reasoning = {};
+    } else {
+      merged.reasoning = Object.assign({}, DEFAULT_CONFIG.reasoning, isPlainObject(config.reasoning) ? config.reasoning : {});
+      merged.reasoning.enabled = Boolean(merged.reasoning.enabled);
+      merged.reasoning.effort = String(merged.reasoning.effort || DEFAULT_CONFIG.reasoning.effort).trim() || DEFAULT_CONFIG.reasoning.effort;
+    }
+
     merged.min_messages = Math.max(1, getFiniteNumber(merged.min_messages, DEFAULT_CONFIG.min_messages));
     merged.cooldown_ms = Math.max(0, getFiniteNumber(merged.cooldown_ms, DEFAULT_CONFIG.cooldown_ms));
     merged.max_retries = Math.max(0, Math.floor(getFiniteNumber(merged.max_retries, DEFAULT_CONFIG.max_retries)));
@@ -265,20 +283,24 @@ class AIChatResponder {
   }
 
   buildReasoningRequest() {
-    const reasoning = this.config.reasoning || {};
-    const effort = String(reasoning.effort || '').trim().toLowerCase();
+    const reasoning = this.config.reasoning;
 
-    if (!reasoning.enabled && (!effort || effort === 'none')) {
+    if (reasoning === null || (isPlainObject(reasoning) && Object.keys(reasoning).length === 0)) {
       return null;
     }
 
     const requestReasoning = {};
 
-    if (reasoning.enabled) {
-      requestReasoning.enabled = true;
+    if (!isPlainObject(reasoning)) {
+      return null;
     }
 
-    if (effort && effort !== 'none') {
+    if (hasOwn(reasoning, 'enabled')) {
+      requestReasoning.enabled = Boolean(reasoning.enabled);
+    }
+
+    if (hasOwn(reasoning, 'effort')) {
+      const effort = String(reasoning.effort || '').trim().toLowerCase();
       requestReasoning.effort = effort;
     }
 

@@ -12,6 +12,17 @@
     },
     "base_url": "https://example.com/v1",
     "api_key": "",
+    "api_key_header": "Authorization",
+    "api_key_prefix": "Bearer ",
+    "extra_headers": {},
+    "metadata_rollout_bucket": {
+      "enabled": false,
+      "key": "rollout_bucket",
+      "min": 0,
+      "max": 99
+    },
+    "metadata_transport": "body",
+    "metadata_header": "",
     "model": "gpt-4o-mini",
     "bot_names": [
       "cakebaobao",
@@ -28,6 +39,7 @@
     "max_response_model_retries": 3,
     "max_context_messages": 20,
     "max_output_chars": 120,
+    "strip_think_tags": true,
     "temperature": 0.8,
     "system_prompt_file": "prompts/aichat-system.txt"
   }

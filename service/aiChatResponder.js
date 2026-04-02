@@ -12,6 +12,17 @@ const DEFAULT_CONFIG = {
   },
   base_url: 'https://example.com/v1',
   api_key: '',
+  api_key_header: 'Authorization',
+  api_key_prefix: 'Bearer ',
+  extra_headers: {},
+  metadata_rollout_bucket: {
+    enabled: false,
+    key: 'rollout_bucket',
+    min: 0,
+    max: 99
+  },
+  metadata_transport: 'body',
+  metadata_header: '',
   model: 'gpt-4o-mini',
   bot_names: ['cakebaobao', 'qoqbot'],
   channels: [],
@@ -25,6 +36,7 @@ const DEFAULT_CONFIG = {
   max_response_model_retries: 0,
   max_context_messages: 30,
   max_output_chars: 180,
+  strip_think_tags: true,
   temperature: 0.8,
   system_prompt: 'You are a Twitch chat bot. Reply briefly, naturally, and stay relevant to the recent chat.'
 };
@@ -57,12 +69,67 @@ function getFiniteNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function getRandomInteger(min, max) {
+  const lower = Math.ceil(Math.min(min, max));
+  const upper = Math.floor(Math.max(min, max));
+  return Math.floor(Math.random() * (upper - lower + 1)) + lower;
+}
+
+function getIntegerStringWidth(min, max) {
+  return Math.max(String(Math.abs(Math.floor(min))).length, String(Math.abs(Math.floor(max))).length, 1);
+}
+
+function formatRolloutBucketValue(value, min, max) {
+  const numericValue = Math.floor(value);
+  const width = getIntegerStringWidth(min, max);
+
+  if (numericValue < 0) {
+    return '-' + String(Math.abs(numericValue)).padStart(width, '0');
+  }
+
+  return String(numericValue).padStart(width, '0');
+}
+
 function hasOwn(object, key) {
   return !!object && Object.prototype.hasOwnProperty.call(object, key);
 }
 
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeHeaders(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+
+  return Object.keys(value).reduce((headers, key) => {
+    const normalizedKey = String(key || '').trim();
+
+    if (!normalizedKey) {
+      return headers;
+    }
+
+    headers[normalizedKey] = String(value[key]);
+    return headers;
+  }, {});
+}
+
+function normalizeMetadata(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+
+  return Object.keys(value).reduce((metadata, key) => {
+    const normalizedKey = String(key || '').trim();
+
+    if (!normalizedKey || typeof value[key] === 'undefined' || value[key] === null) {
+      return metadata;
+    }
+
+    metadata[normalizedKey] = String(value[key]);
+    return metadata;
+  }, {});
 }
 
 function resolveConfigPath(filePath) {
@@ -185,9 +252,36 @@ class AIChatResponder {
     )));
     merged.max_context_messages = Math.max(1, getFiniteNumber(merged.max_context_messages, DEFAULT_CONFIG.max_context_messages));
     merged.max_output_chars = Math.max(1, getFiniteNumber(merged.max_output_chars, DEFAULT_CONFIG.max_output_chars));
+    merged.strip_think_tags = hasOwn(merged, 'strip_think_tags')
+      ? Boolean(merged.strip_think_tags)
+      : DEFAULT_CONFIG.strip_think_tags;
     merged.temperature = getFiniteNumber(merged.temperature, DEFAULT_CONFIG.temperature);
     merged.base_url = String(merged.base_url || DEFAULT_CONFIG.base_url).trim();
     merged.api_key = String(merged.api_key || '');
+    merged.api_key_header = String(merged.api_key_header || DEFAULT_CONFIG.api_key_header).trim() || DEFAULT_CONFIG.api_key_header;
+    merged.api_key_prefix = hasOwn(merged, 'api_key_prefix')
+      ? String(merged.api_key_prefix)
+      : DEFAULT_CONFIG.api_key_prefix;
+    merged.extra_headers = normalizeHeaders(merged.extra_headers);
+    merged.metadata_rollout_bucket = Object.assign(
+      {},
+      DEFAULT_CONFIG.metadata_rollout_bucket,
+      isPlainObject(merged.metadata_rollout_bucket) ? merged.metadata_rollout_bucket : {}
+    );
+    merged.metadata_rollout_bucket.enabled = Boolean(merged.metadata_rollout_bucket.enabled);
+    merged.metadata_rollout_bucket.key = String(
+      merged.metadata_rollout_bucket.key || DEFAULT_CONFIG.metadata_rollout_bucket.key
+    ).trim() || DEFAULT_CONFIG.metadata_rollout_bucket.key;
+    merged.metadata_rollout_bucket.min = Math.floor(getFiniteNumber(
+      merged.metadata_rollout_bucket.min,
+      DEFAULT_CONFIG.metadata_rollout_bucket.min
+    ));
+    merged.metadata_rollout_bucket.max = Math.floor(getFiniteNumber(
+      merged.metadata_rollout_bucket.max,
+      DEFAULT_CONFIG.metadata_rollout_bucket.max
+    ));
+    merged.metadata_transport = String(merged.metadata_transport || DEFAULT_CONFIG.metadata_transport).trim().toLowerCase();
+    merged.metadata_header = String(merged.metadata_header || DEFAULT_CONFIG.metadata_header).trim();
     merged.model = String(merged.model || DEFAULT_CONFIG.model).trim();
     merged.system_prompt_file = String(merged.system_prompt_file || '').trim();
     merged.system_prompt = String(merged.system_prompt || DEFAULT_CONFIG.system_prompt).trim();
@@ -307,6 +401,21 @@ class AIChatResponder {
     return Object.keys(requestReasoning).length > 0 ? requestReasoning : null;
   }
 
+  buildRequestMetadata() {
+    const metadata = {};
+    const rolloutBucket = this.config.metadata_rollout_bucket;
+
+    if (rolloutBucket && rolloutBucket.enabled) {
+      metadata[rolloutBucket.key] = formatRolloutBucketValue(
+        getRandomInteger(rolloutBucket.min, rolloutBucket.max),
+        rolloutBucket.min,
+        rolloutBucket.max
+      );
+    }
+
+    return Object.keys(metadata).length > 0 ? metadata : null;
+  }
+
   buildRequestBody(input, recentMessages) {
     const messages = recentMessages || this.getRecentContextMessages(input);
     const recentLines = this.buildContextLines(messages);
@@ -336,6 +445,14 @@ class AIChatResponder {
 
     if (requestReasoning) {
       requestBody.reasoning = requestReasoning;
+    }
+
+    if (
+      this.config.metadata_transport !== 'header' &&
+      isPlainObject(input.metadata) &&
+      Object.keys(input.metadata).length > 0
+    ) {
+      requestBody.metadata = normalizeMetadata(input.metadata);
     }
 
     return requestBody;
@@ -376,13 +493,21 @@ class AIChatResponder {
     }
 
     const limit = Number.isFinite(maxLength) ? Math.max(0, maxLength) : this.config.max_output_chars;
+    const text = this.config.strip_think_tags ? this.stripThinkTags(reply) : String(reply);
 
-    return String(reply)
+    return text
       .replace(/\r\n/g, '\n')
       .replace(/\n+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, limit);
+  }
+
+  stripThinkTags(reply) {
+    return String(reply || '')
+      .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, ' ')
+      .replace(/<thinking\b[^>]*>[\s\S]*?<\/thinking>/gi, ' ')
+      .replace(/<\/?(think|thinking)\b[^>]*>/gi, ' ');
   }
 
   formatResponseModel(responseModel) {
@@ -477,24 +602,34 @@ class AIChatResponder {
   }
 
   async sendReplyRequest(input) {
-    const headers = {
+    const headers = Object.assign({
       'Content-Type': 'application/json'
-    };
+    }, this.config.extra_headers);
     const recentMessages = this.getRecentContextMessages(input);
     const oldestAgeMs = recentMessages.length > 0 ? input.now - recentMessages[0].ts : 0;
     const requestBody = this.buildRequestBody(input, recentMessages);
 
     if (this.config.api_key) {
-      headers.Authorization = 'Bearer ' + this.config.api_key;
+      headers[this.config.api_key_header] = this.config.api_key_prefix + this.config.api_key;
+    }
+
+    if (
+      this.config.metadata_transport === 'header' &&
+      this.config.metadata_header &&
+      isPlainObject(input.metadata) &&
+      Object.keys(input.metadata).length > 0
+    ) {
+      headers[this.config.metadata_header] = JSON.stringify(normalizeMetadata(input.metadata));
     }
 
     console.log(
-      '[aichat] sending channel=%s reason=%s context_count=%d oldest_age_ms=%d max_context_messages=%d',
+      '[aichat] sending channel=%s reason=%s context_count=%d oldest_age_ms=%d max_context_messages=%d metadata=%s',
       input.channel,
       input.trigger,
       recentMessages.length,
       oldestAgeMs,
-      this.config.max_context_messages
+      this.config.max_context_messages,
+      serializeForLog(input.metadata || {})
     );
 
     let response;
@@ -646,7 +781,7 @@ class AIChatResponder {
     }
 
     if (state.pending) {
-      console.log('[aichat] skip pending channel=%s trigger=%s count=%d', channel, trigger, activityCount);
+      // console.log('[aichat] skip pending channel=%s trigger=%s count=%d', channel, trigger, activityCount);
       return null;
     }
 
@@ -663,7 +798,8 @@ class AIChatResponder {
         channel,
         trigger,
         messages: state.messages,
-        now
+        now,
+        metadata: this.buildRequestMetadata()
       });
 
       const reply = result && result.reply ? result.reply : '';

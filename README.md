@@ -100,6 +100,10 @@ AI chat 設定在 `config.json` 的 `aichat` 區塊，範例可參考 [`config.e
 - 可用 `append_response_model` 控制是否在送出的聊天訊息尾端附上 `response model` 名稱
 - 若 `response model` 名稱包含 `retry_response_model_keywords` 任一關鍵字，會走獨立的 model 重試池，可用 `max_response_model_retries` 調整，不占用一般 API 錯誤重試次數
 - API request timeout 可用 `request_timeout_ms` 調整，預設是 `15000`
+- 可用 `api_key_header` / `api_key_prefix` 對接非標準授權格式的 OpenAI-compatible gateway
+- 若 provider 會把 `<think>...</think>` 一起回傳，預設會用 `strip_think_tags: true` 清掉，避免把推理內容送到聊天室
+- 可用 `metadata_rollout_bucket` 在每次 request 自動附上隨機 bucket，例如 `0~99`，方便在 gateway 端做流量分流
+- `metadata_transport` 可控制 metadata 是放在 request body 還是 request header；Cloudflare AI Gateway 應使用 header
 
 建議測試期先用：
 
@@ -109,6 +113,35 @@ AI chat 設定在 `config.json` 的 `aichat` 區塊，範例可參考 [`config.e
 這樣只會在 log 中看到 AI 回覆，不會真的發到聊天室。
 
 系統 prompt 預設由 [`prompts/aichat-system.txt`](/home/cake/code/node/qoqbot/prompts/aichat-system.txt) 載入。
+
+如果要接 Cloudflare AI Gateway，可以把 `base_url` 設成 `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/compat`，並把：
+
+- `api_key_header` 設成 `cf-aig-authorization`
+- `api_key_prefix` 設成 `Bearer `
+- `api_key` 設成你的 Cloudflare gateway token
+- `metadata_transport` 設成 `header`
+- `metadata_header` 設成 `cf-aig-metadata`
+
+如果要做簡單隨機分流，可以再加：
+
+```json
+"metadata_rollout_bucket": {
+  "enabled": true,
+  "key": "rollout_bucket",
+  "min": 0,
+  "max": 99
+}
+```
+
+這樣每次 API request 都會在 `cf-aig-metadata` header 附上字串型別的 metadata：
+
+```json
+"metadata": {
+  "rollout_bucket": "37"
+}
+```
+
+若 `min=0`、`max=99`，bucket 會固定補零成兩位數字串，例如 `"00"` 到 `"99"`，方便在 gateway 端做字串範圍判斷。
 
 ## Manual Testing
 

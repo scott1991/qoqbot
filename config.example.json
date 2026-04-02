@@ -3,6 +3,9 @@
   "oauth": "",
   "yt_api_key":"",
   "cd": 10000,
+  "ignored_usernames": [
+    "nightbot"
+  ],
   "aichat": {
     "enabled": true,
     "dry_run": true,

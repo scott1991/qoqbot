@@ -8,6 +8,21 @@ const { oauth } = config;
 const botUsername = 'cakebaobao';
 const joinedChannels = ['sweetcampercs', 'cakebaobao'];
 
+function normalizeUsername(username) {
+    if (!username) {
+        return '';
+    }
+
+    return String(username).trim().toLowerCase();
+}
+
+function buildIgnoredUsernames(usernames) {
+    const values = Array.isArray(usernames) ? usernames : [];
+    return new Set(values.map(normalizeUsername).filter(Boolean));
+}
+
+const ignoredUsernames = buildIgnoredUsernames(config.ignored_usernames);
+
 var client = new TwitchCommandoClient({
     username: botUsername,
     oauth: oauth,
@@ -22,8 +37,20 @@ var client = new TwitchCommandoClient({
 const aiChatResponder = new AIChatResponder({
     config: config.aichat,
     joinedChannels: joinedChannels,
-    clientUsername: botUsername
+    clientUsername: botUsername,
+    ignoredUsernames: config.ignored_usernames
 });
+
+const originalOnMessage = client.onMessage.bind(client);
+client.onMessage = function (channel, userstate, messageText, self) {
+    const username = normalizeUsername(userstate && userstate.username);
+
+    if (ignoredUsernames.has(username)) {
+        return;
+    }
+
+    return originalOnMessage(channel, userstate, messageText, self);
+};
 
 // const tmiClient = client._chatClient;
 // tmiClient.options.log.level = 'warn';
@@ -51,12 +78,19 @@ async function setupAndConnect() {
     const provider = new JSONProvider(path.join(__dirname, 'database.json'));
     await provider.init(client); // Initialize the JSONProvider
     client.setProvider(provider); // Set the JSONProvider as the client's provider
+
     await client.connect();
 
     client.tmi.on('message', async (channel, userstate, messageText, self) => {
+        const username = normalizeUsername(userstate && userstate.username);
+
+        if (ignoredUsernames.has(username)) {
+            return;
+        }
+
         const reply = await aiChatResponder.handleMessage({
             channel: channel,
-            username: userstate && userstate.username,
+            username: username,
             text: messageText,
             ts: Date.now(),
             isSelf: self

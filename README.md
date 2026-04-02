@@ -37,6 +37,14 @@ npm install
 3. 複製 [`config.example.json`](/home/cake/code/node/qoqbot/config.example.json) 為 `config.json`。
 4. 在 `config.json` 填入 Twitch OAuth、YouTube API key 與其他必要設定。
 
+如果聊天室裡有其他功能型機器人，可以在 `config.json` 設定 `ignored_usernames`，例如：
+
+```json
+"ignored_usernames": ["nightbot", "moobot"]
+```
+
+這些帳號的訊息會被 bot 全域忽略，不會觸發命令，也不會進入 AI chat 上下文。
+
 ## Run
 
 啟動 bot：
@@ -92,6 +100,7 @@ AI chat 設定在 `config.json` 的 `aichat` 區塊，範例可參考 [`config.e
 
 目前設計是：
 
+- 若 `config.ignored_usernames` 有設定，這些帳號的訊息不會被放進 AI context，也不會拿來觸發 AI reply
 - 只保留每個 channel 最新的 `max_context_messages` 則非指令訊息
 - cooldown 期間持續收集訊息，但不送出 AI
 - 累積到 `min_messages` 則新訊息後，且 cooldown 已過，才允許 activity trigger

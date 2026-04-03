@@ -16,12 +16,52 @@ function normalizeUsername(username) {
     return String(username).trim().toLowerCase();
 }
 
-function buildIgnoredUsernames(usernames) {
-    const values = Array.isArray(usernames) ? usernames : [];
-    return new Set(values.map(normalizeUsername).filter(Boolean));
+function normalizeUserId(userId) {
+    if (!userId) {
+        return '';
+    }
+
+    return String(userId).trim();
 }
 
-const ignoredUsernames = buildIgnoredUsernames(config.ignored_usernames);
+function isUserIdLike(value) {
+    return /^\d+$/.test(value);
+}
+
+function getUserIdFromUserstate(userstate) {
+    return normalizeUserId(userstate && userstate['user-id']);
+}
+
+function buildIgnoredUsers(config) {
+    const usernames = new Set();
+    const userIds = new Set();
+    const values = []
+        .concat(Array.isArray(config.ignored_users) ? config.ignored_users : [])
+        .concat(Array.isArray(config.ignored_usernames) ? config.ignored_usernames : [])
+        .concat(Array.isArray(config.ignored_user_ids) ? config.ignored_user_ids : []);
+
+    values.forEach(value => {
+        const text = String(value || '').trim();
+
+        if (!text) {
+            return;
+        }
+
+        if (isUserIdLike(text)) {
+            userIds.add(normalizeUserId(text));
+            return;
+        }
+
+        usernames.add(normalizeUsername(text));
+    });
+
+    return {
+        usernames: usernames,
+        userIds: userIds
+    };
+}
+
+const ignoredUsers = buildIgnoredUsers(config);
 
 var client = new TwitchCommandoClient({
     username: botUsername,
@@ -38,14 +78,17 @@ const aiChatResponder = new AIChatResponder({
     config: config.aichat,
     joinedChannels: joinedChannels,
     clientUsername: botUsername,
-    ignoredUsernames: config.ignored_usernames
+    ignoredUsers: config.ignored_users,
+    ignoredUsernames: config.ignored_usernames,
+    ignoredUserIds: config.ignored_user_ids
 });
 
 const originalOnMessage = client.onMessage.bind(client);
 client.onMessage = function (channel, userstate, messageText, self) {
     const username = normalizeUsername(userstate && userstate.username);
+    const userId = getUserIdFromUserstate(userstate);
 
-    if (ignoredUsernames.has(username)) {
+    if (ignoredUsers.usernames.has(username) || ignoredUsers.userIds.has(userId)) {
         return;
     }
 
@@ -83,14 +126,16 @@ async function setupAndConnect() {
 
     client.tmi.on('message', async (channel, userstate, messageText, self) => {
         const username = normalizeUsername(userstate && userstate.username);
+        const userId = getUserIdFromUserstate(userstate);
 
-        if (ignoredUsernames.has(username)) {
+        if (ignoredUsers.usernames.has(username) || ignoredUsers.userIds.has(userId)) {
             return;
         }
 
         const reply = await aiChatResponder.handleMessage({
             channel: channel,
             username: username,
+            userId: userId,
             text: messageText,
             ts: Date.now(),
             isSelf: self

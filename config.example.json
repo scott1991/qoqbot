@@ -3,7 +3,7 @@
   "oauth": "",
   "yt_api_key":"",
   "cd": 10000,
-  "ignored_usernames": [
+  "ignored_users": [
     "nightbot"
   ],
   "aichat": {

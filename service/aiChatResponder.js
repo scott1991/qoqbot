@@ -25,7 +25,9 @@ const DEFAULT_CONFIG = {
   metadata_header: '',
   model: 'gpt-4o-mini',
   bot_names: ['cakebaobao', 'qoqbot'],
+  ignored_users: [],
   ignored_usernames: [],
+  ignored_user_ids: [],
   channels: [],
   min_messages: 3,
   cooldown_ms: 180000,
@@ -59,6 +61,18 @@ function normalizeUsername(username) {
   }
 
   return String(username).trim().toLowerCase();
+}
+
+function normalizeUserId(userId) {
+  if (!userId) {
+    return '';
+  }
+
+  return String(userId).trim();
+}
+
+function isUserIdLike(value) {
+  return /^\d+$/.test(value);
 }
 
 function escapeRegex(value) {
@@ -203,31 +217,66 @@ class AIChatResponder {
     const config = options && options.config ? options.config : {};
     const joinedChannels = options && options.joinedChannels ? options.joinedChannels : [];
     const clientUsername = options && options.clientUsername ? options.clientUsername : '';
+    const ignoredUsers = options && options.ignoredUsers ? options.ignoredUsers : [];
     const ignoredUsernames = options && options.ignoredUsernames ? options.ignoredUsernames : [];
+    const ignoredUserIds = options && options.ignoredUserIds ? options.ignoredUserIds : [];
 
     this.clientUsername = normalizeUsername(clientUsername);
-    this.config = this.buildConfig(config, this.clientUsername, ignoredUsernames);
+    this.config = this.buildConfig(config, this.clientUsername, ignoredUsers, ignoredUsernames, ignoredUserIds);
     this.ignoredUsernames = new Set(this.config.ignored_usernames);
+    this.ignoredUserIds = new Set(this.config.ignored_user_ids);
     this.joinedChannels = new Set(joinedChannels.map(normalizeChannelName).filter(Boolean));
     this.channelStates = new Map();
   }
 
-  buildConfig(config, clientUsername, ignoredUsernames) {
+  buildConfig(config, clientUsername, ignoredUsers, ignoredUsernames, ignoredUserIds) {
     const merged = Object.assign({}, DEFAULT_CONFIG, config || {});
     const names = Array.isArray(merged.bot_names) ? merged.bot_names : [];
     const normalizedNames = names.map(normalizeUsername).filter(Boolean);
-    const ignoredNames = []
+    const ignoredNames = new Set();
+    const ignoredIds = new Set();
+    const ignoredValues = []
+      .concat(Array.isArray(merged.ignored_users) ? merged.ignored_users : [])
+      .concat(Array.isArray(ignoredUsers) ? ignoredUsers : [])
       .concat(Array.isArray(merged.ignored_usernames) ? merged.ignored_usernames : [])
-      .concat(Array.isArray(ignoredUsernames) ? ignoredUsernames : [])
-      .map(normalizeUsername)
-      .filter(Boolean);
+      .concat(Array.isArray(ignoredUsernames) ? ignoredUsernames : []);
+    const ignoredIdValues = []
+      .concat(Array.isArray(merged.ignored_user_ids) ? merged.ignored_user_ids : [])
+      .concat(Array.isArray(ignoredUserIds) ? ignoredUserIds : []);
+
+    ignoredValues.forEach(value => {
+      const text = String(value || '').trim();
+
+      if (!text) {
+        return;
+      }
+
+      if (isUserIdLike(text)) {
+        ignoredIds.add(normalizeUserId(text));
+        return;
+      }
+
+      ignoredNames.add(normalizeUsername(text));
+    });
+
+    ignoredIdValues.forEach(value => {
+      const text = normalizeUserId(value);
+
+      if (!text) {
+        return;
+      }
+
+      ignoredIds.add(text);
+    });
 
     if (clientUsername && !normalizedNames.includes(clientUsername)) {
       normalizedNames.push(clientUsername);
     }
 
     merged.bot_names = normalizedNames.length ? normalizedNames : DEFAULT_CONFIG.bot_names.slice();
-    merged.ignored_usernames = Array.from(new Set(ignoredNames));
+    merged.ignored_users = Array.from(ignoredNames);
+    merged.ignored_usernames = Array.from(ignoredNames);
+    merged.ignored_user_ids = Array.from(ignoredIds);
     merged.channels = Array.isArray(merged.channels)
       ? merged.channels.map(normalizeChannelName).filter(Boolean)
       : [];
@@ -351,6 +400,10 @@ class AIChatResponder {
 
   isIgnoredUsername(username) {
     return !!username && this.ignoredUsernames.has(username);
+  }
+
+  isIgnoredUserId(userId) {
+    return !!userId && this.ignoredUserIds.has(userId);
   }
 
   debugLog(message) {
@@ -755,6 +808,7 @@ class AIChatResponder {
     const now = input && input.ts ? input.ts : Date.now();
     const channel = normalizeChannelName(input && input.channel);
     const username = normalizeUsername(input && input.username);
+    const userId = normalizeUserId(input && input.userId);
     const text = String((input && input.text) || '').trim();
 
     if (!channel || !username || !text) {
@@ -774,6 +828,11 @@ class AIChatResponder {
 
     if (this.isIgnoredUsername(username)) {
       this.debugLog('skip ignored-user channel=' + channel + ' username=' + username);
+      return null;
+    }
+
+    if (this.isIgnoredUserId(userId)) {
+      this.debugLog('skip ignored-user-id channel=' + channel + ' username=' + username + ' userId=' + userId);
       return null;
     }
 

@@ -1,126 +1,195 @@
-# Development Plan: qoq-commando - A Lightweight Twitch Bot Framework (CURRENTLY PENDING)
+# Development Plan: qoq-commando - EventSub + Helix Chat Framework (CURRENTLY PENDING)
 
 ## 1. Overview
 
-This document outlines the development plan for `qoq-commando`, a lightweight Twitch chat bot framework. The framework will replace the `twitch-commando` dependency in the `qoqbot` project, removing the need for `sqlite` and the built-in `SettingsProvider`. It will be designed to support the existing features of `qoqbot`, including custom rate-limiting and dynamic command generation.
+This document outlines the development plan for `qoq-commando`, a lightweight Twitch chat bot framework that replaces the `twitch-commando` dependency in `qoqbot`.
+
+The upgraded version intentionally does **not** use `tmi.js` or IRC as the primary chat transport. Instead, it adopts Twitch's modern chatbot architecture:
+
+* Event intake via **EventSub** (WebSocket first, Webhook optional).
+* Message sending via **Helix Send Chat Message API**.
+* OAuth token lifecycle management for app/user tokens.
+
+The framework remains compatible with `qoqbot` command patterns (rate limiting, dynamic command generation) while removing the dependency on `sqlite` and built-in `SettingsProvider`.
 
 ## 2. Project Goals
 
-*   Create a standalone Node.js package for the bot framework.
-*   Replicate the core command-handling functionality of `twitch-commando`.
-*   Remove the dependency on `sqlite` and the `SettingsProvider`.
-*   Provide a simple, file-based data persistence solution as an optional component.
-*   Ensure the framework is compatible with the existing command structure of `qoqbot`.
+* Create a standalone Node.js package for the bot framework.
+* Replicate the core command-handling UX from `twitch-commando` for existing commands.
+* Remove `tmi.js` and IRC coupling from the framework core.
+* Adopt EventSub + Helix as the default chat architecture.
+* Remove dependency on `sqlite` and `SettingsProvider`.
+* Provide optional file-based persistence and token cache helpers.
+* Ensure compatibility with the existing command structure of `qoqbot`.
 
-## 3. Phases of Development
+## 3. Target Architecture
 
-### Phase 1: Core Framework Implementation
+### 3.1 Transport and Auth Model
 
-This phase focuses on building the essential components of the framework.
+* **Inbound chat events**: EventSub subscriptions (channel chat message + other required event types).
+* **Outbound chat messages**: Helix API (`/chat/messages`).
+* **Auth**:
+    * App Access Token for EventSub management operations.
+    * User Access Token for chat send operations and user-context scopes.
+* **Token lifecycle**:
+    * Validation on startup.
+    * Refresh flow for expiring tokens.
+    * Clear error mapping for missing scopes / revoked tokens.
 
-#### 3.1. Project Scaffolding
-
-Create the following directory structure for the new package:
+### 3.2 High-level Components
 
 ```
 qoq-commando/
 ├── src/
-│   ├── client.js         # Core client class
-│   ├── command.js        # Base command class
-│   └── commandRegistry.js # Command registration and management
-└── index.js              # Package entry point
+│   ├── client.js               # QoqCommandoClient (orchestration)
+│   ├── command.js              # Base command class
+│   ├── commandRegistry.js      # Command registration and lookup
+│   ├── eventsubGateway.js      # EventSub WS/webhook session + handlers
+│   ├── helixChatApi.js         # Send Chat Message + Helix wrappers
+│   ├── auth/
+│   │   ├── tokenManager.js     # token validate/refresh/cache
+│   │   └── scopeGuard.js       # required scope checks
+│   └── adapters/
+│       └── messageContext.js   # normalize EventSub payload -> msg object
+└── index.js                    # Package entry point
 ```
 
-#### 3.2. `src/client.js`: `QoqCommandoClient`
+## 4. Phases of Development
 
-This class will be the main entry point for the framework.
+### Phase 1: Core Framework Implementation
 
-*   **Dependencies**: `tmi.js`
-*   **Constructor**: `constructor(options)`
-    *   Accepts `options` object with `username`, `oauth`, `channels`, `prefix`.
-    *   Initializes a `tmi.js` client.
-    *   Initializes a `CommandRegistry`.
-*   **Methods**:
-    *   `connect()`: Connects the `tmi.js` client to Twitch.
-    *   `onMessageHandler(channel, userstate, message, self)`:
-        *   Bound to the `tmi.js` `message` event.
-        *   Parses the message to identify the command and arguments.
-        *   Looks up the command in the `CommandRegistry`.
-        *   If a command is found, execute its `run` method, passing a `msg` object.
-    *   `registerCommand(commandClass)`: Registers a single command class.
-    *   `registerCommandsIn(directory)`: Loads and registers all command files from a given directory.
-    *   `say(channel, message)`: A convenience method to send a message to a channel.
+#### 4.1 Project Scaffolding
 
-#### 3.3. `src/command.js`: `QoqCommand`
+Create the package structure shown above and initialize lint/test tooling.
 
-This will be the base class that all commands extend.
+#### 4.2 `src/client.js`: `QoqCommandoClient`
 
-*   **Constructor**: `constructor(client, options)`
-    *   Accepts the client instance and an `options` object.
-    *   The `options` object will contain metadata like `name`, `aliases`, `group`, `description`.
-*   **Methods**:
-    *   `run(msg, args)`: The main logic of the command. This method must be overridden by subclasses.
+Main entry point for framework users.
 
-#### 3.4. `src/commandRegistry.js`: `CommandRegistry`
+* **Dependencies**: native `fetch`/HTTP client, EventSub gateway, Helix chat API module.
+* **Constructor**: `constructor(options)`
+    * Accepts `options` including identity, broadcaster/channel IDs, prefix, token provider.
+    * Initializes `CommandRegistry`, `TokenManager`, `EventSubGateway`, and `HelixChatApi`.
+* **Methods**:
+    * `connect()`:
+        * Validates tokens/scopes.
+        * Starts EventSub connection (WS default).
+        * Ensures required subscriptions exist.
+    * `onEventSubMessage(event)`:
+        * Converts EventSub payload into internal `msg` object.
+        * Runs command parsing + dispatch pipeline.
+    * `registerCommand(commandClass)` and `registerCommandsIn(directory)`.
+    * `say(channel, text, options)`:
+        * Resolves broadcaster/sender IDs.
+        * Calls Helix Send Chat Message endpoint.
 
-This class will manage the collection of commands.
+#### 4.3 `src/command.js`: `QoqCommand`
 
-*   **Constructor**: `constructor()`
-    *   Initializes an array or map to store commands.
-*   **Methods**:
-    *   `register(command)`: Adds a command instance to the registry.
-    *   `find(commandName)`: Finds a command by its name or alias.
+Base class for commands.
 
-### Phase 2: Advanced Feature Implementation
+* **Constructor**: `constructor(client, options)`
+    * Maintains metadata: `name`, `aliases`, `group`, `description`.
+* **Methods**:
+    * `run(msg, args)`: to be implemented by subclasses.
 
-This phase adds features required by `qoqbot`'s existing commands.
+#### 4.4 `src/commandRegistry.js`: `CommandRegistry`
 
-#### 3.5. Rate Limiting
+Command collection and lookup.
 
-The `RateLimitedTwitchChatCommand` will be implemented as a new base class that extends `QoqCommand`.
+* `register(command)`
+* `find(commandName)`
+* Alias collision checks and startup warnings.
 
-*   **`RateLimitedQoqCommand`**:
-    *   Extends `QoqCommand`.
-    *   Adds `rateLimit` and `lastCommandTimestamp` properties.
-    *   Overrides the `run` method to check the rate limit before executing the command's logic.
-    *   Introduces a new method, `delayRun(msg, args)`, which subclasses will implement for their logic.
+#### 4.5 `src/adapters/messageContext.js`
 
-#### 3.6. Dynamic Command Generation
+Normalizes EventSub event payloads into a stable command context.
 
-The framework must support the pattern used in `ViewerCommand.js`.
+* Normalize fields such as `username`, `userId`, `channel`, `messageText`, timestamp, badges/mod flags.
+* Preserve compatibility for existing command expectations where possible.
 
-*   The `registerCommand` method in `QoqCommandoClient` will be the primary way to add dynamically created commands.
-*   The implementation should ensure that the client's command collection can be modified at runtime.
+### Phase 2: EventSub + Helix Infrastructure
 
-#### 3.7. Simple JSON-based Persistence
+#### 4.6 `src/eventsubGateway.js`
 
-A simple, optional JSON provider can be created, mimicking the existing `JSONProvider.js`.
+* Support WebSocket session handling (welcome, keepalive, reconnect, revocation).
+* Subscription bootstrap and reconciliation.
+* Event routing only for required event types (chat message first).
+* Idempotent delivery handling and retry-safe processing.
 
-*   **`JSONProvider`**:
-    *   A class with `get(key, defaultValue)` and `set(key, value)` methods.
-    *   It will read from and write to a JSON file.
-    *   The `QoqCommandoClient` can have an optional `setProvider(provider)` method to make the provider available to commands.
+#### 4.7 `src/helixChatApi.js`
 
-### Phase 3: Integration and Refactoring in `qoqbot`
+* Encapsulate Helix chat-send endpoint and future chat endpoints.
+* Centralized rate-limit/backoff handling for Helix responses.
+* Error translation into developer-friendly framework errors.
 
-This phase details the steps to replace `twitch-commando` in the `qoqbot` project.
+#### 4.8 `src/auth/tokenManager.js` + `scopeGuard.js`
 
-#### 3.8. Update `package.json`
+* Validate tokens at startup.
+* Refresh and persist tokens via pluggable storage callback.
+* Required scope declarations per feature.
+* Runtime guardrails with actionable errors.
 
-*   Remove `"twitch-commando": "github:scott1991/twitch-commando"`.
-*   Add the new `qoq-commando` package (e.g., as a local dependency).
+### Phase 3: Compatibility Features for `qoqbot`
 
-#### 3.9. Refactor `index.js`
+#### 4.9 Rate Limiting
 
-*   Replace `const { TwitchCommandoClient } = require('twitch-commando');` with `const { QoqCommandoClient } = require('qoq-commando');`.
-*   Update the client instantiation to use `QoqCommandoClient`.
-*   Remove the `setProvider` logic if the new persistence provider is not used.
-*   The `registerDetaultCommands` method will be removed, as it's not part of the new framework.
+Implement `RateLimitedQoqCommand` extending `QoqCommand`.
 
-#### 3.10. Refactor Command Files
+* Preserve `delayRun(msg, args)` style used by existing project patterns.
+* Keep behavior aligned with current `service/rateLimited.js` semantics.
 
-*   In all command files (e.g., `commands/querys/followTime.js`), replace `const { TwitchChatCommand } = require('twitch-commando');` with `const { QoqCommand } = require('qoq-commando');`.
-*   In `service/rateLimited.js`, the `RateLimitedTwitchChatCommand` should be updated to extend `QoqCommand`.
-*   Update any usage of the `msg` object to match the structure provided by `QoqCommandoClient`.
+#### 4.10 Dynamic Command Generation
 
-By following this plan, a developer can create a new, lightweight framework tailored to the needs of `qoqbot` and then integrate it into the project, successfully removing the `twitch-commando` dependency.
+* Keep runtime registration APIs for `ViewerCommand.js` style command generation.
+* Ensure dynamic command updates are safe while the EventSub session is active.
+
+#### 4.11 Optional JSON Persistence
+
+* Provide lightweight JSON provider similar to current provider behavior.
+* Keep provider optional and independent from command dispatch core.
+
+### Phase 4: Integration and Refactoring in `qoqbot`
+
+#### 4.12 Update `package.json`
+
+* Remove `twitch-commando` dependency.
+* Add `qoq-commando` package reference.
+
+#### 4.13 Refactor `index.js`
+
+* Replace `TwitchCommandoClient` with `QoqCommandoClient`.
+* Move from IRC credential config (`username` + `oauth`) to EventSub/Helix config set:
+    * app client id/secret handling
+    * user token + refresh token
+    * broadcaster/user IDs
+* Keep ignored-user filtering and AI responder hooks with the new message context.
+
+#### 4.14 Refactor Command Files
+
+* Replace `TwitchChatCommand` imports with `QoqCommand` (or `RateLimitedQoqCommand`).
+* Update command `msg` assumptions to new normalized context fields.
+
+## 5. Milestones and Acceptance Criteria
+
+### M1: Minimal Chat Loop (EventSub -> command -> Helix reply)
+
+* Bot receives channel chat messages via EventSub.
+* A simple `!ping` style command executes and responds via Helix.
+
+### M2: Command Parity for Existing qoqbot Commands
+
+* Existing query/streamer commands run under new framework with no user-visible command name changes.
+* Rate-limited commands behave as before.
+
+### M3: Operational Hardening
+
+* Token refresh and EventSub reconnect paths validated.
+* Startup diagnostics clearly report missing scopes, invalid IDs, or auth failures.
+
+## 6. Migration Notes
+
+* Initial rollout should support a staged migration (old bot and new bot in separate test channels).
+* Avoid enabling both frameworks in the same process for production channels during early migration.
+* Add runbook docs for token rotation and EventSub subscription troubleshooting.
+
+By following this plan, the team can build a modern `qoq-commando` framework aligned with Twitch's EventSub + Helix direction while preserving `qoqbot`'s command-centric developer experience.

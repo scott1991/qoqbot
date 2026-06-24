@@ -573,6 +573,7 @@ class AIChatResponder {
     return String(reply || '')
       .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, ' ')
       .replace(/<thinking\b[^>]*>[\s\S]*?<\/thinking>/gi, ' ')
+      .replace(/<(think|thinking)\b[^>]*>[\s\S]*$/i, ' ')
       .replace(/<\/?(think|thinking)\b[^>]*>/gi, ' ');
   }
 

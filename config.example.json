@@ -3,6 +3,9 @@
   "oauth": "",
   "yt_api_key":"",
   "cd": 10000,
+  "fifa": {
+    "cache_seconds": 300
+  },
   "ignored_users": [
     "nightbot"
   ],

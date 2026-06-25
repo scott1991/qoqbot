@@ -53,12 +53,23 @@ async function fetchScores() {
     return cachedScores;
 }
 
-function getTaiwanMoment(value) {
+function getCurrentTaiwanMoment(value) {
+    return moment(value).utcOffset(TAIWAN_UTC_OFFSET_MINUTES);
+}
+
+function getMatchTaiwanMoment(value) {
+    const text = String(value || '');
+
+    // SETN appends Z, but these score sheet times are Taiwan local wall time.
+    if (text.endsWith('Z')) {
+        return moment.parseZone(text.slice(0, -1) + '+08:00');
+    }
+
     return moment(value).utcOffset(TAIWAN_UTC_OFFSET_MINUTES);
 }
 
 function getTargetDate(dayOffset, now) {
-    return getTaiwanMoment(now || new Date()).add(dayOffset, 'days').format('YYYY/MM/DD');
+    return getCurrentTaiwanMoment(now || new Date()).add(dayOffset, 'days').format('YYYY/MM/DD');
 }
 
 function getMatchesByDay(scores, dayOffset, now) {
@@ -70,9 +81,9 @@ function getMatchesByDay(scores, dayOffset, now) {
                 return false;
             }
 
-            return getTaiwanMoment(score.playStartTime).format('YYYY/MM/DD') === targetDate;
+            return getMatchTaiwanMoment(score.playStartTime).format('YYYY/MM/DD') === targetDate;
         })
-        .sort((a, b) => new Date(a.playStartTime) - new Date(b.playStartTime));
+        .sort((a, b) => getMatchTaiwanMoment(a.playStartTime).valueOf() - getMatchTaiwanMoment(b.playStartTime).valueOf());
 }
 
 function hasScore(score) {
@@ -94,7 +105,7 @@ function formatScore(match) {
 }
 
 function formatMatch(match) {
-    const time = getTaiwanMoment(match.playStartTime).format('HH:mm');
+    const time = getMatchTaiwanMoment(match.playStartTime).format('HH:mm');
 
     return time + ' ' + formatScore(match);
 }

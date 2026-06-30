@@ -8,11 +8,11 @@ class RateLimitedTwitchChatCommand extends TwitchChatCommand {
     this.lastCommandTimestamp = 0;
   }
 
-  async run(msg) {
+  async run(msg, parameters) {
     const now = Date.now();
     let t = now - this.lastCommandTimestamp ;
     if (t >= this.rateLimit) {
-      await this.delayRun(msg);
+      await this.delayRun(msg, parameters);
       this.lastCommandTimestamp = now;
     } else {
       // console.log(t);
@@ -25,7 +25,7 @@ class RateLimitedTwitchChatCommand extends TwitchChatCommand {
     }
   }
 
-  async delayRun(msg) {
+  async delayRun(msg, parameters) {
     // This method should be overridden in derived classes
   }
 }

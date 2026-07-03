@@ -4,7 +4,11 @@
   "yt_api_key":"",
   "cd": 10000,
   "fifa": {
-    "cache_seconds": 300
+    "cache_seconds": 300,
+    "source": "bing",
+    "season_year": 2026,
+    "bing_url": "https://www.bing.com/bingsportstab?q=&sport=Soccer&scenario=League&TimezoneId=Taipei%20Standard%20Time&IANATimezoneId=Asia/Taipei&ISOTimezoneKey=CST&league=Soccer_InternationalWorldCup&intent=Generic&seasonyear=2026&segment=sports&isl2=true&isajax=true&TopAjaxTabReq=true&IsInfiniteScrollAjax=true",
+    "fallback_to_setn": true
   },
   "ignored_users": [
     "nightbot"

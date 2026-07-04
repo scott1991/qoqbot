@@ -416,14 +416,18 @@ class AIChatResponder {
     return this.config.dry_run;
   }
 
-  addContextMessage(state, message) {
+  addContextMessage(state, message, options) {
+    const shouldCountActivity = !options || options.countActivity !== false;
+
     state.messages.push(message);
 
     while (state.messages.length > this.config.max_context_messages) {
       state.messages.shift();
     }
 
-    state.messagesSinceReply += 1;
+    if (shouldCountActivity) {
+      state.messagesSinceReply += 1;
+    }
   }
 
   buildContextLines(messages) {
@@ -822,11 +826,6 @@ class AIChatResponder {
       return null;
     }
 
-    if (this.isBotMessage(username, input && input.isSelf)) {
-      this.debugLog('skip self channel=' + channel + ' username=' + username);
-      return null;
-    }
-
     if (this.isIgnoredUsername(username)) {
       this.debugLog('skip ignored-user channel=' + channel + ' username=' + username);
       return null;
@@ -840,6 +839,22 @@ class AIChatResponder {
     const state = this.getState(channel);
 
     const isCommand = this.isCommand(text);
+
+    if (this.isBotMessage(username, input && input.isSelf)) {
+      if (!isCommand) {
+        this.addContextMessage(state, {
+          username,
+          text,
+          ts: now
+        }, {
+          countActivity: false
+        });
+      }
+
+      this.debugLog('record self channel=' + channel + ' username=' + username + ' command=' + String(isCommand));
+      return null;
+    }
+
     const isMention = this.isMention(text);
 
     if (!isCommand) {

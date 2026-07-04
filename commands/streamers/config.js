@@ -334,5 +334,12 @@ module.exports = [
     aliases: ['!諾亞亞人數', '!noya人數', '!Noya人數', '!NOYA人數', '!詩亞人數', '!詩亞亞人數'],
     youtubeChannelId: null,
     twitchUsername: 'noyayaya520'
+  },
+  {
+    displayName: '涅默',
+    command: '!涅默人數',
+    aliases: ['!捏摸人數', '!捏寶人數', '!默默大帝人數', '!默娘人數'],
+    youtubeChannelId: 'UCFiIsVOC1p_gfTYDYXXfl4g',
+    twitchUsername: 'nemesisxdfp'
   }
 ];

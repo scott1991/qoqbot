@@ -119,12 +119,20 @@ function normalizeText(value) {
     return decodeHtml(value).replace(/\s+/g, ' ').trim();
 }
 
+function stripHtmlTags(value) {
+    return normalizeText(String(value || '').replace(/<[^>]*>/g, ' '));
+}
+
 function isBingDateText(value) {
     return /^\d{1,2}月\d{1,2}日/.test(value) || /^(昨天|今天|明天)$/.test(value);
 }
 
 function isBingTimeText(value) {
     return /^\d{1,2}:\d{2}$/.test(value);
+}
+
+function isBingLiveStatusText(value) {
+    return /^(H\d|HT|ET)\b/i.test(value) || /^(上半場|下半場|中場|半場|加時|直播)/.test(value) || /\d+'\s*$/.test(value);
 }
 
 function parseBingScorePart(value, teamName) {
@@ -138,6 +146,27 @@ function parseBingScorePart(value, teamName) {
     const score = Number(text.slice(prefix.length).trim());
 
     return Number.isFinite(score) ? score : null;
+}
+
+function parseBingPenaltyScores(cardHtml) {
+    const penaltyScores = [];
+    const scorePattern = /<div\b[^>]*\bclass=(["'])[^"']*\bbsp_team_scr\b[^"']*\1[^>]*>([\s\S]*?)<\/div>/g;
+    let match;
+
+    while ((match = scorePattern.exec(String(cardHtml || ''))) !== null) {
+        const penaltyMatch = match[2].match(/<span\b[^>]*\bclass=(["'])[^"']*\bbsp_pnlty_scr\b[^"']*\1[^>]*>\s*\((\d+)\)\s*<\/span>/);
+
+        penaltyScores.push(penaltyMatch ? Number(penaltyMatch[2]) : null);
+    }
+
+    if (penaltyScores.length < 2 || !hasScore(penaltyScores[0]) || !hasScore(penaltyScores[1])) {
+        return null;
+    }
+
+    return {
+        play1PKScore: penaltyScores[0],
+        play2PKScore: penaltyScores[1]
+    };
 }
 
 function getBingMatchTaiwanTime(dateText, timeText, now) {
@@ -169,7 +198,7 @@ function getBingMatchTaiwanTime(dateText, timeText, now) {
     ).format();
 }
 
-function parseBingMatchLabel(label, now) {
+function parseBingMatchLabel(label, now, fallbackDateText, cardHtml) {
     const text = normalizeText(label);
     const match = text.match(/^查看有關 (.+?) 對決 (.+?) 的詳細資料, (.+)$/);
 
@@ -183,22 +212,25 @@ function parseBingMatchLabel(label, now) {
     const stage = parts.shift() || '';
     const dateIndex = parts.findIndex(isBingDateText);
 
-    if (dateIndex === -1) {
+    if (dateIndex === -1 && !fallbackDateText) {
         return null;
     }
 
-    const dateText = parts[dateIndex];
-    const timeText = isBingTimeText(parts[dateIndex + 1]) ? parts[dateIndex + 1] : '';
+    const dateText = dateIndex === -1 ? fallbackDateText : parts[dateIndex];
+    const timeText = dateIndex !== -1 && isBingTimeText(parts[dateIndex + 1]) ? parts[dateIndex + 1] : '';
     const playStartTime = getBingMatchTaiwanTime(dateText, timeText, now);
 
     if (!playStartTime) {
         return null;
     }
 
-    const scoreParts = parts.slice(0, dateIndex);
+    const scoreParts = dateIndex === -1 ? parts.slice(0, 2) : parts.slice(0, dateIndex);
+    const statusText = dateIndex === -1 ? parts.slice(2).join(' ') : '';
+    const isLive = isBingLiveStatusText(statusText);
     const play1Score = parseBingScorePart(scoreParts[0], play1Name);
     const play2Score = parseBingScorePart(scoreParts[1], play2Name);
     const hasScores = hasScore(play1Score) && hasScore(play2Score);
+    const penaltyScores = parseBingPenaltyScores(cardHtml);
 
     return {
         playStartTime: playStartTime,
@@ -206,8 +238,11 @@ function parseBingMatchLabel(label, now) {
         play2Name: play2Name,
         play1Score: hasScores ? play1Score : undefined,
         play2Score: hasScores ? play2Score : undefined,
+        play1PKScore: penaltyScores ? penaltyScores.play1PKScore : undefined,
+        play2PKScore: penaltyScores ? penaltyScores.play2PKScore : undefined,
         stage: stage,
-        ended: hasScores,
+        matchStatus: isLive ? statusText : undefined,
+        ended: hasScores && !isLive,
         hideTime: !timeText
     };
 }
@@ -215,11 +250,25 @@ function parseBingMatchLabel(label, now) {
 function parseBingScores(html, now) {
     const scores = [];
     const seen = {};
-    const ariaLabelPattern = /\baria-label=(["'])(.*?)\1/g;
+    const itemPattern = /<div\b[^>]*\bclass=(["'])[^"']*\bbsp-schedule-date-pivot\b[^"']*\1[^>]*>([\s\S]*?)<\/div>|\baria-label=(["'])(.*?)\3/g;
+    let currentDateText = '';
     let match;
 
-    while ((match = ariaLabelPattern.exec(String(html || ''))) !== null) {
-        const score = parseBingMatchLabel(match[2], now);
+    while ((match = itemPattern.exec(String(html || ''))) !== null) {
+        if (match[2]) {
+            const dateText = stripHtmlTags(match[2]);
+
+            if (isBingDateText(dateText)) {
+                currentDateText = dateText;
+            }
+
+            continue;
+        }
+
+        const anchorStartIndex = String(html || '').lastIndexOf('<a ', match.index);
+        const anchorEndIndex = String(html || '').indexOf('</a>', match.index);
+        const cardHtml = anchorStartIndex !== -1 && anchorEndIndex !== -1 ? String(html || '').slice(anchorStartIndex, anchorEndIndex + 4) : '';
+        const score = parseBingMatchLabel(match[4], now, currentDateText, cardHtml);
 
         if (!score) {
             continue;
@@ -230,7 +279,9 @@ function parseBingScores(html, now) {
             score.play1Name,
             score.play2Name,
             score.play1Score,
-            score.play2Score
+            score.play2Score,
+            score.play1PKScore,
+            score.play2PKScore
         ].join('|');
 
         if (!seen[key]) {
@@ -339,6 +390,10 @@ function formatScore(match) {
 }
 
 function formatMatch(match) {
+    if (match.matchStatus && !match.ended) {
+        return normalizeText(match.matchStatus.replace(/\s*·\s*/g, ' ')) + ' ' + formatScore(match);
+    }
+
     if (match.hideTime) {
         return formatScore(match);
     }

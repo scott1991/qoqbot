@@ -433,8 +433,9 @@ class AIChatResponder {
   buildContextLines(messages) {
     return messages.map(message => {
       const username = message.username || 'user';
+      const label = message.isSelf ? username + ' [self/bot output]' : username;
       const text = String(message.text || '').replace(/\s+/g, ' ').trim();
-      return username + ': ' + text;
+      return label + ': ' + text;
     });
   }
 
@@ -492,6 +493,7 @@ class AIChatResponder {
     const userContent = [
       'Channel: ' + input.channel,
       'Trigger: ' + input.trigger,
+      'Context note: Lines marked [self/bot output] were sent by this account and may be casual chat or command/tool replies. Generate only the next casual Twitch chat message.',
       'Recent chat:',
       recentLines.length ? recentLines.join('\n') : '(none)'
     ].join('\n');
@@ -845,6 +847,7 @@ class AIChatResponder {
         this.addContextMessage(state, {
           username,
           text,
+          isSelf: true,
           ts: now
         }, {
           countActivity: false

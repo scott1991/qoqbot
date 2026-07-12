@@ -65,6 +65,8 @@ Authorization Code Grant，並在 `config.json` 同時設定 `client_secret` 與
 "ignored_users": ["nightbot", "moobot"]
 ```
 
+若要在終端顯示每則聊天室訊息，設定頂層 `"log_chat_messages": true`；預設為 `false`。
+
 這些帳號的訊息會被 bot 全域忽略，不會觸發命令，也不會進入 AI chat 上下文。若你想用更穩定的 Twitch user-id，也可以額外使用 `ignored_user_ids`。
 
 ## Run

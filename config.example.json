@@ -6,6 +6,7 @@
   "broadcaster_user_id": "",
   "sender_user_id": "",
   "channel": "sweetcampercs",
+  "log_chat_messages": false,
   "yt_api_key":"",
   "cd": 10000,
   "fifa": {

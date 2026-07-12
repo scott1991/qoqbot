@@ -14,6 +14,13 @@ function normalizeUserId(userId) {
     return String(userId || '').trim();
 }
 
+function singleLineLogValue(value) {
+    return String(value || '')
+        .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function isUserIdLike(value) {
     return /^\d+$/.test(value);
 }
@@ -158,6 +165,7 @@ class QoqBotClient extends QoqCommandoClient {
         super(options);
         this.aiChatResponder = aiChatResponder;
         this.ignoredUsers = ignoredUsers;
+        this.logChatMessages = options.logChatMessages === true;
     }
 
     async onEventSubMessage(event) {
@@ -168,6 +176,14 @@ class QoqBotClient extends QoqCommandoClient {
         const username = normalizeUsername(msg.username);
         const userId = normalizeUserId(msg.userId);
 
+        if (this.logChatMessages) {
+            console.log(
+                '[chat] #%s %s: %s',
+                singleLineLogValue(msg.channel || this.channel),
+                singleLineLogValue(msg.displayName || username || 'unknown'),
+                singleLineLogValue(msg.messageText)
+            );
+        }
         if (
             this.ignoredUsers.usernames.has(username) ||
             this.ignoredUsers.userIds.has(userId)
@@ -248,6 +264,7 @@ async function createClient(
         senderUserId: identity.senderUserId,
         channel: identity.channel,
         prefix: '!',
+        logChatMessages: botConfig.log_chat_messages === true,
         fetchImpl,
         webSocketFactory: url => new WebSocket(url),
         tokenManager

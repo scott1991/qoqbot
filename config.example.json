@@ -1,6 +1,11 @@
 {
   "client_id":"",
-  "oauth": "",
+  "client_secret": "",
+  "user_access_token": "",
+  "user_refresh_token": "",
+  "broadcaster_user_id": "",
+  "sender_user_id": "",
+  "channel": "sweetcampercs",
   "yt_api_key":"",
   "cd": 10000,
   "fifa": {

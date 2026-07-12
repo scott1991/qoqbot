@@ -1,4 +1,3 @@
-const { TwitchChatCommand } = require('twitch-commando');
 const util = require('util');
 const moment = require('moment');
 const twitchSvc = require('../../service/twitchSvc');
@@ -6,9 +5,9 @@ const momentDurationFormatSetup = require("moment-duration-format");
 momentDurationFormatSetup(moment);
 moment.locale('zh-tw');
 
-const {RateLimitedTwitchChatCommand} = require('../../service/rateLimited');
+const {RateLimitedQoqBotCommand} = require('../../service/rateLimited');
 
-class TwitchAccountRegistrationTime extends RateLimitedTwitchChatCommand {
+class TwitchAccountRegistrationTime extends RateLimitedQoqBotCommand {
   constructor(client) {
     super(client, {
       name: '!追隨時間',
@@ -22,11 +21,11 @@ class TwitchAccountRegistrationTime extends RateLimitedTwitchChatCommand {
     });
   }
 
-  async delayRun(msg) {
-    let arg1 = '' ;
+  async delayRun(msg, args = []) {
+    const arg1 = args[0] || '';
     try {
-      let name = arg1 ? arg1 : msg.author.username;
-      this.client.say(msg.channel.name, '!followage ' + name); 
+      const name = arg1 || msg.username;
+      this.client.say(msg.channel, '!followage ' + name);
     } catch (e) {
       msg.reply('我找不到欸');
       console.log(util.inspect(e, { depth: 3 }))

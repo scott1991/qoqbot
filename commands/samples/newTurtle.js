@@ -1,7 +1,7 @@
-const { RateLimitedTwitchChatCommand } = require('../../service/rateLimited');
+const { RateLimitedQoqBotCommand } = require('../../service/rateLimited');
 const utils = require('../../service/utils');
 
-class SampleCommand extends RateLimitedTwitchChatCommand {
+class SampleCommand extends RateLimitedQoqBotCommand {
   constructor(client) {
     super(client, {
       name: '!74新龜',
@@ -25,7 +25,7 @@ class SampleCommand extends RateLimitedTwitchChatCommand {
     const message = messages[utils.getRandomInt(messages.length)];
 
     if (message) {
-      this.client.say(msg.channel.name, message); // 在聊天室中發送訊息
+      this.client.say(msg.channel, message); // 在聊天室中發送訊息
     }
   }
 }

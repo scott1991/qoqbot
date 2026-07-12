@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "twitch:auth": "node scripts/twitchOAuth.js",
     "start": "node index.js"
   },
   "engines": {
@@ -17,6 +18,7 @@
     "got": "^11.5.2",
     "moment": "^2.27.0",
     "moment-duration-format": "^2.3.2",
-    "twitch-commando": "github:scott1991/twitch-commando"
+    "qoq-commando": "file:../qoq-commando",
+    "ws": "^8.18.3"
   }
 }

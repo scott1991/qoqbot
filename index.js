@@ -1,44 +1,43 @@
-const { TwitchCommandoClient } = require('twitch-commando');
 const path = require('path');
+const WebSocket = require('ws');
+const { QoqCommandoClient, normalizeMessageContext } = require('qoq-commando');
 const config = require('./config.json');
-const JSONProvider = require('./provider/JSONProvider');
 const AIChatResponder = require('./service/aiChatResponder');
-
-const { oauth } = config;
-const botUsername = 'cakebaobao';
-const joinedChannels = ['sweetcampercs', 'cakebaobao'];
+const AutoRefreshingTokenManager = require('./service/autoRefreshingTokenManager');
+const TwitchConfigTokenProvider = require('./service/twitchConfigTokenProvider');
 
 function normalizeUsername(username) {
-    if (!username) {
-        return '';
-    }
-
-    return String(username).trim().toLowerCase();
+    return String(username || '').trim().toLowerCase();
 }
 
 function normalizeUserId(userId) {
-    if (!userId) {
-        return '';
-    }
-
-    return String(userId).trim();
+    return String(userId || '').trim();
 }
 
 function isUserIdLike(value) {
     return /^\d+$/.test(value);
 }
 
-function getUserIdFromUserstate(userstate) {
-    return normalizeUserId(userstate && userstate['user-id']);
+function normalizeAccessToken(token) {
+    return String(token || '').trim().replace(/^oauth:/i, '');
 }
 
-function buildIgnoredUsers(config) {
+function getConfiguredChannel(botConfig) {
+    const aiChannels = botConfig.aichat && botConfig.aichat.channels;
+    return normalizeUsername(
+        botConfig.channel ||
+        (Array.isArray(aiChannels) && aiChannels[0]) ||
+        'sweetcampercs'
+    );
+}
+
+function buildIgnoredUsers(botConfig) {
     const usernames = new Set();
     const userIds = new Set();
     const values = []
-        .concat(Array.isArray(config.ignored_users) ? config.ignored_users : [])
-        .concat(Array.isArray(config.ignored_usernames) ? config.ignored_usernames : [])
-        .concat(Array.isArray(config.ignored_user_ids) ? config.ignored_user_ids : []);
+        .concat(Array.isArray(botConfig.ignored_users) ? botConfig.ignored_users : [])
+        .concat(Array.isArray(botConfig.ignored_usernames) ? botConfig.ignored_usernames : [])
+        .concat(Array.isArray(botConfig.ignored_user_ids) ? botConfig.ignored_user_ids : []);
 
     values.forEach(value => {
         const text = String(value || '').trim();
@@ -49,106 +48,246 @@ function buildIgnoredUsers(config) {
 
         if (isUserIdLike(text)) {
             userIds.add(normalizeUserId(text));
-            return;
+        } else {
+            usernames.add(normalizeUsername(text));
         }
-
-        usernames.add(normalizeUsername(text));
     });
 
+    return { usernames, userIds };
+}
+
+function requireConfig(botConfig) {
+    const missing = [];
+
+    if (!String(botConfig.client_id || '').trim()) {
+        missing.push('client_id');
+    }
+    if (!normalizeAccessToken(botConfig.user_access_token || botConfig.oauth)) {
+        missing.push('user_access_token');
+    }
+    if (!String(botConfig.client_secret || '').trim()) {
+        missing.push('client_secret');
+    }
+    if (!String(botConfig.user_refresh_token || '').trim()) {
+        missing.push('user_refresh_token');
+    }
+    if (!getConfiguredChannel(botConfig)) {
+        missing.push('channel');
+    }
+
+    if (missing.length > 0) {
+        throw new Error(
+            'Missing qoq-commando config: ' + missing.join(', ') +
+            '. Copy the required fields from config.example.json.'
+        );
+    }
+}
+
+async function resolveTwitchIdentity(
+    botConfig,
+    fetchImpl = globalThis.fetch,
+    tokenManager
+) {
+    const senderUserId = normalizeUserId(botConfig.sender_user_id);
+    const broadcasterUserId = normalizeUserId(botConfig.broadcaster_user_id);
+    const channel = getConfiguredChannel(botConfig);
+
+    if (senderUserId && broadcasterUserId) {
+        return { senderUserId, broadcasterUserId, channel };
+    }
+
+    const accessToken = tokenManager
+        ? await tokenManager.getUserAccessToken()
+        : normalizeAccessToken(botConfig.user_access_token || botConfig.oauth);
+    const validationResponse = await fetchImpl('https://id.twitch.tv/oauth2/validate', {
+        headers: { Authorization: 'OAuth ' + accessToken }
+    });
+    const validation = await validationResponse.json().catch(() => ({}));
+
+    if (!validationResponse.ok || !validation.user_id) {
+        throw new Error(
+            'Unable to resolve sender_user_id from Twitch token: ' +
+            (validation.message || validationResponse.statusText)
+        );
+    }
+
+    const resolvedSenderUserId = senderUserId || normalizeUserId(validation.user_id);
+    if (broadcasterUserId) {
+        return {
+            senderUserId: resolvedSenderUserId,
+            broadcasterUserId,
+            channel
+        };
+    }
+
+    if (normalizeUsername(validation.login) === channel) {
+        return {
+            senderUserId: resolvedSenderUserId,
+            broadcasterUserId: normalizeUserId(validation.user_id),
+            channel
+        };
+    }
+
+    const usersUrl = new URL('https://api.twitch.tv/helix/users');
+    usersUrl.searchParams.set('login', channel);
+    const userResponse = await fetchImpl(usersUrl, {
+        headers: {
+            Authorization: 'Bearer ' + accessToken,
+            'Client-Id': botConfig.client_id
+        }
+    });
+    const users = await userResponse.json().catch(() => ({}));
+    const broadcaster = users.data && users.data[0];
+
+    if (!userResponse.ok || !broadcaster || !broadcaster.id) {
+        throw new Error(
+            'Unable to resolve broadcaster_user_id for ' + channel + ': ' +
+            (users.message || userResponse.statusText)
+        );
+    }
+
     return {
-        usernames: usernames,
-        userIds: userIds
+        senderUserId: resolvedSenderUserId,
+        broadcasterUserId: normalizeUserId(broadcaster.id),
+        channel
     };
 }
 
-const ignoredUsers = buildIgnoredUsers(config);
-
-var client = new TwitchCommandoClient({
-    username: botUsername,
-    oauth: oauth,
-    channels: joinedChannels,
-    botOwners: [
-        botUsername
-    ],
-    prefix: "",
-    logger: 'warn', // Set the log level to "warn"
-});
-
-const aiChatResponder = new AIChatResponder({
-    config: config.aichat,
-    joinedChannels: joinedChannels,
-    clientUsername: botUsername,
-    ignoredUsers: config.ignored_users,
-    ignoredUsernames: config.ignored_usernames,
-    ignoredUserIds: config.ignored_user_ids
-});
-
-const originalOnMessage = client.onMessage.bind(client);
-client.onMessage = function (channel, userstate, messageText, self) {
-    const username = normalizeUsername(userstate && userstate.username);
-    const userId = getUserIdFromUserstate(userstate);
-
-    if (ignoredUsers.usernames.has(username) || ignoredUsers.userIds.has(userId)) {
-        return;
+class QoqBotClient extends QoqCommandoClient {
+    constructor(options, aiChatResponder, ignoredUsers) {
+        super(options);
+        this.aiChatResponder = aiChatResponder;
+        this.ignoredUsers = ignoredUsers;
     }
 
-    return originalOnMessage(channel, userstate, messageText, self);
-};
+    async onEventSubMessage(event) {
+        const msg = normalizeMessageContext(
+            { ...event, client: this },
+            { defaultChannel: this.channel }
+        );
+        const username = normalizeUsername(msg.username);
+        const userId = normalizeUserId(msg.userId);
 
-// const tmiClient = client._chatClient;
-// tmiClient.options.log.level = 'warn';
+        if (
+            this.ignoredUsers.usernames.has(username) ||
+            this.ignoredUsers.userIds.has(userId)
+        ) {
+            return undefined;
+        }
 
-// good for development and debugging
-// client.enableVerboseLogging();
+        const commandResult = await super.onEventSubMessage(event);
 
-client.on('connected', () => {
-    console.log('connected');
-});
+        try {
+            const reply = await this.aiChatResponder.handleMessage({
+                channel: msg.channel,
+                username,
+                userId,
+                text: msg.messageText,
+                ts: Date.parse(msg.timestamp) || Date.now(),
+                isSelf: userId === this.senderUserId
+            });
 
-client.on('join', channel => {
-    console.log('join');
-});
+            if (reply) {
+                if (this.aiChatResponder.isDryRun()) {
+                    console.log('[aichat] dry_run channel=%s reply=%s', msg.channel, reply);
+                } else {
+                    await this.say(msg.channel, reply);
+                }
+            }
+        } catch (error) {
+            console.error('[aichat] failed:', error);
+        }
 
-client.on('error', err => {
-    console.error(err);
-});
+        return commandResult;
+    }
+}
 
-client.registerDetaultCommands();
-client.registerCommandsIn(path.join(__dirname, 'commands'));
+function registerCommands(client) {
+    client.registerCommandsIn(path.join(__dirname, 'commands', 'querys'));
+    client.registerCommandsIn(path.join(__dirname, 'commands', 'samples'));
+    client.registerCommand(require('./commands/streamers/ViewerCommand'));
+}
 
+async function createClient(
+    botConfig = config,
+    fetchImpl = globalThis.fetch,
+    runtimeOptions = {}
+) {
+    requireConfig(botConfig);
+
+    const configPath = runtimeOptions.configPath || path.join(__dirname, 'config.json');
+    const tokenProvider = new TwitchConfigTokenProvider({
+        configPath,
+        config: botConfig,
+        normalizeAccessToken
+    });
+    await tokenProvider.secureFile();
+    const tokenManager = new AutoRefreshingTokenManager({
+        clientId: botConfig.client_id,
+        clientSecret: botConfig.client_secret,
+        tokenProvider,
+        fetchImpl
+    });
+    await tokenManager.validate('user');
+
+    const identity = await resolveTwitchIdentity(botConfig, fetchImpl, tokenManager);
+    const ignoredUsers = buildIgnoredUsers(botConfig);
+    const aiChatResponder = new AIChatResponder({
+        config: botConfig.aichat,
+        joinedChannels: [identity.channel],
+        clientUsername: botConfig.bot_username || 'cakebaobao',
+        ignoredUsers: botConfig.ignored_users,
+        ignoredUsernames: botConfig.ignored_usernames,
+        ignoredUserIds: botConfig.ignored_user_ids
+    });
+
+    const client = new QoqBotClient({
+        clientId: botConfig.client_id,
+        clientSecret: botConfig.client_secret,
+        broadcasterUserId: identity.broadcasterUserId,
+        senderUserId: identity.senderUserId,
+        channel: identity.channel,
+        prefix: '!',
+        fetchImpl,
+        webSocketFactory: url => new WebSocket(url),
+        tokenManager
+    }, aiChatResponder, ignoredUsers);
+
+    client.eventSubGateway.on('session_welcome', () => {
+        console.log('connected to Twitch EventSub for %s', identity.channel);
+    });
+    client.eventSubGateway.on('disconnected', () => {
+        console.warn('disconnected from Twitch EventSub for %s', identity.channel);
+    });
+    client.eventSubGateway.on('error', error => {
+        console.error(error);
+    });
+
+    registerCommands(client);
+    return client;
+}
 
 async function setupAndConnect() {
-    const provider = new JSONProvider(path.join(__dirname, 'database.json'));
-    await provider.init(client); // Initialize the JSONProvider
-    client.setProvider(provider); // Set the JSONProvider as the client's provider
-
+    const client = await createClient();
     await client.connect();
+    return client;
+}
 
-    client.tmi.on('message', async (channel, userstate, messageText, self) => {
-        const username = normalizeUsername(userstate && userstate.username);
-        const userId = getUserIdFromUserstate(userstate);
-
-        if (ignoredUsers.usernames.has(username) || ignoredUsers.userIds.has(userId)) {
-            return;
-        }
-
-        const reply = await aiChatResponder.handleMessage({
-            channel: channel,
-            username: username,
-            userId: userId,
-            text: messageText,
-            ts: Date.now(),
-            isSelf: self
-        });
-
-        if (reply) {
-            if (aiChatResponder.isDryRun()) {
-                console.log('[aichat] dry_run channel=%s reply=%s', channel, reply);
-            } else {
-                client.say(channel, reply);
-            }
-        }
+if (require.main === module) {
+    setupAndConnect().catch(error => {
+        console.error(error);
+        process.exitCode = 1;
     });
 }
 
-setupAndConnect().catch(console.error);
+module.exports = {
+    QoqBotClient,
+    buildIgnoredUsers,
+    createClient,
+    getConfiguredChannel,
+    normalizeAccessToken,
+    registerCommands,
+    requireConfig,
+    resolveTwitchIdentity,
+    setupAndConnect
+};

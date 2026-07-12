@@ -1,7 +1,7 @@
-const { RateLimitedTwitchChatCommand } = require('../../service/rateLimited');
+const { RateLimitedQoqBotCommand } = require('../../service/rateLimited');
 const utils = require('../../service/utils');
 
-class SampleCommand extends RateLimitedTwitchChatCommand {
+class SampleCommand extends RateLimitedQoqBotCommand {
   constructor(client) {
     super(client, {
       name: '!閉嘴',
@@ -12,7 +12,7 @@ class SampleCommand extends RateLimitedTwitchChatCommand {
   }
 
   async delayRun(msg) {
-    // this.client.say(msg.channel.name, "https://i.imgur.com/hDU35z8.png"); // 在聊天室中發送訊息
+    // this.client.say(msg.channel, "https://i.imgur.com/hDU35z8.png"); // 在聊天室中發送訊息
   }
 }
 module.exports = SampleCommand;

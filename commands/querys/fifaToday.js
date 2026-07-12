@@ -1,6 +1,6 @@
 const util = require('util');
 const fifaSvc = require('../../service/fifaSvc');
-const {RateLimitedTwitchChatCommand} = require('../../service/rateLimited');
+const {RateLimitedQoqBotCommand} = require('../../service/rateLimited');
 
 const dayOffsets = {
     '昨天': -1,
@@ -19,7 +19,7 @@ function getDayOffset(day) {
     return 0;
 }
 
-class FifaToday extends RateLimitedTwitchChatCommand {
+class FifaToday extends RateLimitedQoqBotCommand {
     constructor(client) {
         super(client, {
             name: '!fifa今天',
@@ -34,7 +34,8 @@ class FifaToday extends RateLimitedTwitchChatCommand {
         });
     }
 
-    async delayRun(msg, { day } = {}) {
+    async delayRun(msg, args = []) {
+        const day = args[0];
         try {
             const messages = await fifaSvc.getMessagesForDay(getDayOffset(day));
 

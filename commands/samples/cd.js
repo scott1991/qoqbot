@@ -1,12 +1,11 @@
-const { TwitchChatCommand } = require('twitch-commando');
+const { QoqCommand } = require('qoq-commando');
 const { cd } = require('../../config.json');
-class SampleCommand extends TwitchChatCommand
+class SampleCommand extends QoqCommand
 {
     constructor(client)
     {
         super(client, {
-            name: '!cd',
-            aliases: [ '!CD' ],
+            name: 'cd',
             group: 'samples',
             description: `指令目前CD時間是${cd/1000}秒`
         });

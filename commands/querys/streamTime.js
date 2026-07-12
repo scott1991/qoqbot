@@ -1,4 +1,3 @@
-const { TwitchChatCommand } = require('twitch-commando');
 const util = require('util');
 const moment = require('moment');
 const twitchSvc = require('../../service/twitchSvc');
@@ -6,9 +5,9 @@ const momentDurationFormatSetup = require("moment-duration-format");
 momentDurationFormatSetup(moment);
 moment.locale('zh-tw');
 
-const {RateLimitedTwitchChatCommand} = require('../../service/rateLimited');
+const {RateLimitedQoqBotCommand} = require('../../service/rateLimited');
 
-class StreamStartTime extends RateLimitedTwitchChatCommand {
+class StreamStartTime extends RateLimitedQoqBotCommand {
   constructor(client) {
     super(client, {
       name: '!uptime',
@@ -22,10 +21,10 @@ class StreamStartTime extends RateLimitedTwitchChatCommand {
     });
   }
 
-  async delayRun(msg) {
-    let arg1 = '';
+  async delayRun(msg, args = []) {
+    const arg1 = args[0] || '';
     try {
-      let name = arg1 ? arg1 : msg.channel.name;
+      let name = arg1 || msg.channel;
       // Remove # prefix if present
       name = name.replace(/^#/, '');
       console.log('Checking stream time for:', name);

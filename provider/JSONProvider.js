@@ -1,9 +1,7 @@
 const fs = require('fs');
-const { SettingsProvider } = require('twitch-commando');
 
-class JSONProvider extends SettingsProvider {
+class JSONProvider {
     constructor(filePath) {
-        super();
         this.filePath = filePath;
         this.data = {};
     }

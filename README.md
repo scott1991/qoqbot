@@ -1,6 +1,7 @@
 # qoqbot
 
-qoqbot 是一個用 Node.js 撰寫的 Twitch 聊天機器人，基於 `twitch-commando`。目前主要功能包含：
+qoqbot 是一個用 Node.js 撰寫的 Twitch 聊天機器人，使用上一層的
+`../qoq-commando`，透過 EventSub 收取訊息並以 Helix 發送訊息。目前主要功能包含：
 
 - Twitch / YouTube 直播者觀看數查詢
 - 註冊時間、追隨時間等查詢命令
@@ -27,7 +28,7 @@ nvm use 18
 
 ## Install
 
-1. clone 此 repo。
+1. 確認 `qoqbot` 與 `qoq-commando` 位於同一層目錄。
 2. 安裝依賴：
 
 ```bash
@@ -35,7 +36,28 @@ npm install
 ```
 
 3. 複製 [`config.example.json`](/home/cake/code/node/qoqbot/config.example.json) 為 `config.json`。
-4. 在 `config.json` 填入 Twitch OAuth、YouTube API key 與其他必要設定。
+
+不需安裝 Twitch CLI，也不需設定 WSL port mapping。先在 Twitch Developer Console 登記
+OAuth Redirect URL `http://localhost`，再執行：
+
+```bash
+npm run twitch:auth
+```
+
+Script 會在終端印出授權網址，請自行複製到瀏覽器開啟。授權後即使 localhost 顯示無法
+連線也沒關係，只要複製網址列的完整 localhost URL 並貼回終端；script 會驗證 OAuth state、自動交換 token，
+並安全更新 `config.json`。若設定檔還沒有 Client ID 或 Client Secret，script 會現場詢問，
+其中 Client Secret 的輸入不會顯示在畫面上。
+
+Twitch token 至少需要 `user:read:chat` 與 `user:write:chat` scopes。請使用
+Authorization Code Grant，並在 `config.json` 同時設定 `client_secret` 與
+`user_refresh_token`。Bot 會在 token 失效或即將到期時自動 refresh，以原子寫入更新
+`user_access_token` / `user_refresh_token`，並將 `config.json` 權限設為 `0600`。
+
+`sender_user_id` 與 `broadcaster_user_id` 可以省略，啟動時會向 Twitch 解析。舊 `oauth`
+欄位只會被當成初始 access token；自動 refresh 仍必須提供 `client_secret` 與
+`user_refresh_token`，第一次 refresh 後會改寫成新欄位並移除 `oauth`。每個 bot 程序目前
+連接一個 broadcaster，不再使用 IRC join/part 管理多頻道。
 
 如果聊天室裡有其他功能型機器人，可以在 `config.json` 設定 `ignored_users`，例如：
 
@@ -63,14 +85,12 @@ node index.js
 
 ## Project Layout
 
-- [`index.js`](/home/cake/code/node/qoqbot/index.js)：bot 進入點，初始化 client、provider 與 AI responder
+- [`index.js`](/home/cake/code/node/qoqbot/index.js)：bot 進入點，初始化 EventSub/Helix client 與 AI responder
 - [`commands/streamers/config.js`](/home/cake/code/node/qoqbot/commands/streamers/config.js)：直播者命令定義
 - [`commands/streamers/ViewerCommand.js`](/home/cake/code/node/qoqbot/commands/streamers/ViewerCommand.js)：批次註冊 viewer 類命令
 - [`commands/querys/`](/home/cake/code/node/qoqbot/commands/querys)：查詢類命令
 - [`commands/samples/`](/home/cake/code/node/qoqbot/commands/samples)：固定回覆或簡單範例命令
 - [`service/`](/home/cake/code/node/qoqbot/service/)：共用 service，例如 Twitch / YouTube 查詢與 AI chat responder
-- [`provider/JSONProvider.js`](/home/cake/code/node/qoqbot/provider/JSONProvider.js)：簡單 JSON provider
-- [`database.json`](/home/cake/code/node/qoqbot/database.json)：provider 使用的資料檔
 
 ## Commands
 

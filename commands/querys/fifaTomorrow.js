@@ -1,8 +1,8 @@
 const util = require('util');
 const fifaSvc = require('../../service/fifaSvc');
-const {RateLimitedTwitchChatCommand} = require('../../service/rateLimited');
+const {RateLimitedQoqBotCommand} = require('../../service/rateLimited');
 
-class FifaTomorrow extends RateLimitedTwitchChatCommand {
+class FifaTomorrow extends RateLimitedQoqBotCommand {
     constructor(client) {
         super(client, {
             name: '!fifa明天',

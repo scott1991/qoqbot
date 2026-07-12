@@ -1,6 +1,6 @@
-const { TwitchChatCommand } = require('twitch-commando');
+const { QoqCommand } = require('qoq-commando');
 
-class SampleCommand extends TwitchChatCommand
+class SampleCommand extends QoqCommand
 {
     constructor(client)
     {

@@ -2,7 +2,7 @@ const util = require('util');
 const moment = require('moment');
 const ytSvc = require('../../service/ytSvc');
 const twitchSvc = require('../../service/twitchSvc');
-const { RateLimitedTwitchChatCommand } = require('../../service/rateLimited');
+const { RateLimitedQoqBotCommand } = require('../../service/rateLimited');
 const momentDurationFormatSetup = require('moment-duration-format');
 momentDurationFormatSetup(moment);
 moment.locale('zh-tw');
@@ -11,7 +11,7 @@ const configs = require('./config');
 const extrasFlag = Symbol.for('qoqbot.viewerCommandsRegistered');
 
 const createCommandClass = cfg => {
-  return class ViewerCommand extends RateLimitedTwitchChatCommand {
+  return class ViewerCommand extends RateLimitedQoqBotCommand {
     constructor(client) {
       super(client, {
         name: cfg.command,
@@ -87,20 +87,12 @@ class ViewerCommand extends PrimaryCommand {
   }
 
   registerExtraCommands(client) {
-    if (!client || !Array.isArray(client.commands) || client[extrasFlag]) {
+    if (!client || typeof client.registerCommand !== 'function' || client[extrasFlag]) {
       return;
     }
 
     commandClasses.slice(1).forEach(CommandClass => {
-      const extraCommand = new CommandClass(client);
-      if (client.logger && typeof client.logger.info === 'function') {
-        client.logger.info(
-          `Register command ${extraCommand.options.group}:${extraCommand.options.name}`
-        );
-      } else {
-        console.log(`Register command ${extraCommand.options.group}:${extraCommand.options.name}`);
-      }
-      client.commands.push(extraCommand);
+      client.registerCommand(CommandClass);
     });
 
     client[extrasFlag] = true;

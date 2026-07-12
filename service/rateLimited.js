@@ -1,33 +1,25 @@
-const { TwitchChatCommand } = require("twitch-commando");
+const { RateLimitedQoqCommand } = require('qoq-commando');
 const { cd } = require('../config.json');
 
-class RateLimitedTwitchChatCommand extends TwitchChatCommand {
+function withoutPrefix(value) {
+  return String(value || '').replace(/^!/, '');
+}
+
+class RateLimitedQoqBotCommand extends RateLimitedQoqCommand {
   constructor(client, options) {
-    super(client, options);
-    this.rateLimit = cd;
-    this.lastCommandTimestamp = 0;
-  }
+    const name = withoutPrefix(options.name).toLowerCase();
+    const aliases = [...new Set(
+      (options.aliases || []).map(alias => withoutPrefix(alias).toLowerCase())
+    )].filter(alias => alias !== name);
 
-  async run(msg, parameters) {
-    const now = Date.now();
-    let t = now - this.lastCommandTimestamp ;
-    if (t >= this.rateLimit) {
-      await this.delayRun(msg, parameters);
-      this.lastCommandTimestamp = now;
-    } else {
-      // console.log(t);
-      /*
-      setTimeout(async () => {
-        //await this.delayRun(msg);
-        this.lastCommandTimestamp = Date.now();
-      }, this.rateLimit - (now - this.lastCommandTimestamp));
-      */
-    }
-  }
-
-  async delayRun(msg, parameters) {
-    // This method should be overridden in derived classes
+    super(client, {
+      ...options,
+      name,
+      aliases,
+      cooldownMs: options.cooldownMs || cd,
+      cooldownScope: options.cooldownScope || 'global'
+    });
   }
 }
 
-module.exports = {RateLimitedTwitchChatCommand:RateLimitedTwitchChatCommand};
+module.exports = { RateLimitedQoqBotCommand };

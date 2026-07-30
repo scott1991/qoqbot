@@ -4,6 +4,7 @@ const { QoqCommandoClient, normalizeMessageContext } = require('qoq-commando');
 const config = require('./config.json');
 const AIChatResponder = require('./service/aiChatResponder');
 const AutoRefreshingTokenManager = require('./service/autoRefreshingTokenManager');
+const { MemoryClient, validateMemoryConfig } = require('./service/memoryClient');
 const TwitchConfigTokenProvider = require('./service/twitchConfigTokenProvider');
 
 function normalizeUsername(username) {
@@ -88,6 +89,8 @@ function requireConfig(botConfig) {
             '. Copy the required fields from config.example.json.'
         );
     }
+
+    validateMemoryConfig(botConfig.memory);
 }
 
 async function resolveTwitchIdentity(
@@ -198,6 +201,7 @@ class QoqBotClient extends QoqCommandoClient {
                 channel: msg.channel,
                 username,
                 userId,
+                channelId: msg.channelId || this.broadcasterUserId,
                 text: msg.messageText,
                 ts: Date.parse(msg.timestamp) || Date.now(),
                 isSelf: userId === this.senderUserId
@@ -222,6 +226,13 @@ function registerCommands(client) {
     client.registerCommandsIn(path.join(__dirname, 'commands', 'querys'));
     client.registerCommandsIn(path.join(__dirname, 'commands', 'samples'));
     client.registerCommand(require('./commands/streamers/ViewerCommand'));
+
+    if (client.memoryClient && client.memoryClient.isEnabled()) {
+        const memoryCommands = require('./commands/memory');
+        client.registerCommand(memoryCommands.RememberCommand);
+        client.registerCommand(memoryCommands.ListMemoriesCommand);
+        client.registerCommand(memoryCommands.ForgetCommand);
+    }
 }
 
 async function createClient(
@@ -248,13 +259,16 @@ async function createClient(
 
     const identity = await resolveTwitchIdentity(botConfig, fetchImpl, tokenManager);
     const ignoredUsers = buildIgnoredUsers(botConfig);
+    const memoryConfig = validateMemoryConfig(botConfig.memory);
+    const memoryClient = new MemoryClient({ config: memoryConfig, fetchImpl });
     const aiChatResponder = new AIChatResponder({
         config: botConfig.aichat,
         joinedChannels: [identity.channel],
         clientUsername: botConfig.bot_username || 'cakebaobao',
         ignoredUsers: botConfig.ignored_users,
         ignoredUsernames: botConfig.ignored_usernames,
-        ignoredUserIds: botConfig.ignored_user_ids
+        ignoredUserIds: botConfig.ignored_user_ids,
+        memoryClient
     });
 
     const client = new QoqBotClient({
@@ -269,6 +283,7 @@ async function createClient(
         webSocketFactory: url => new WebSocket(url),
         tokenManager
     }, aiChatResponder, ignoredUsers);
+    client.memoryClient = memoryClient;
 
     client.eventSubGateway.on('session_welcome', () => {
         console.log('connected to Twitch EventSub for %s', identity.channel);

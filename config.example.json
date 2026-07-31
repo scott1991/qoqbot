@@ -23,7 +23,8 @@
     "enabled": false,
     "base_url": "",
     "api_token": "",
-    "request_timeout_ms": 3000
+    "request_timeout_ms": 3000,
+    "query_messages": 5
   },
   "aichat": {
     "enabled": true,

@@ -268,7 +268,8 @@ async function createClient(
         ignoredUsers: botConfig.ignored_users,
         ignoredUsernames: botConfig.ignored_usernames,
         ignoredUserIds: botConfig.ignored_user_ids,
-        memoryClient
+        memoryClient,
+        memoryQueryMessages: memoryConfig.query_messages
     });
 
     const client = new QoqBotClient({

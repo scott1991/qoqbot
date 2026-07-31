@@ -4,7 +4,8 @@ const DEFAULT_MEMORY_CONFIG = {
   enabled: false,
   base_url: '',
   api_token: '',
-  request_timeout_ms: 3000
+  request_timeout_ms: 3000,
+  query_messages: 5
 };
 
 class MemoryClientError extends Error {
@@ -23,6 +24,19 @@ function getFiniteTimeout(value) {
     : DEFAULT_MEMORY_CONFIG.request_timeout_ms;
 }
 
+function getQueryMessageLimit(value) {
+  if (typeof value === 'undefined' || value === null || value === '') {
+    return DEFAULT_MEMORY_CONFIG.query_messages;
+  }
+
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 5) {
+    throw new Error('memory.query_messages must be an integer from 1 to 5');
+  }
+
+  return limit;
+}
+
 function buildMemoryConfig(config) {
   const input = config && typeof config === 'object' ? config : {};
 
@@ -30,7 +44,8 @@ function buildMemoryConfig(config) {
     enabled: Boolean(input.enabled),
     base_url: String(input.base_url || '').trim().replace(/\/+$/, ''),
     api_token: String(input.api_token || '').trim(),
-    request_timeout_ms: getFiniteTimeout(input.request_timeout_ms)
+    request_timeout_ms: getFiniteTimeout(input.request_timeout_ms),
+    query_messages: getQueryMessageLimit(input.query_messages)
   };
 }
 

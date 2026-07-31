@@ -236,6 +236,9 @@ class AIChatResponder {
     this.joinedChannels = new Set(joinedChannels.map(normalizeChannelName).filter(Boolean));
     this.channelStates = new Map();
     this.memoryClient = options && options.memoryClient ? options.memoryClient : null;
+    this.memoryQueryMessages = options && Number.isSafeInteger(options.memoryQueryMessages)
+      ? options.memoryQueryMessages
+      : MEMORY_QUERY_MESSAGE_LIMIT;
   }
 
   buildConfig(config, clientUsername, ignoredUsers, ignoredUsernames, ignoredUserIds) {
@@ -542,9 +545,23 @@ class AIChatResponder {
     return requestBody;
   }
 
-  buildRecallQuery(messages) {
-    const lines = this.buildContextLines((messages || []).slice(-MEMORY_QUERY_MESSAGE_LIMIT));
-    return truncateCharacters(lines.join('\n'), MEMORY_QUERY_CHAR_LIMIT).trim();
+  buildRecallQuery(trigger, messages, triggerMessage) {
+    let queryMessages;
+
+    if (trigger === 'mention' && triggerMessage) {
+      queryMessages = [triggerMessage];
+    } else {
+      queryMessages = (messages || [])
+        .filter(message => !message.isSelf)
+        .slice(-this.memoryQueryMessages);
+    }
+
+    const lines = this.buildContextLines(queryMessages);
+    return {
+      query: truncateCharacters(lines.join('\n'), MEMORY_QUERY_CHAR_LIMIT).trim(),
+      messageCount: queryMessages.length,
+      mode: trigger === 'mention' ? 'mention' : 'activity'
+    };
   }
 
   buildMemoryFacts(memories) {
@@ -573,20 +590,36 @@ class AIChatResponder {
     ].join('\n');
   }
 
-  async recallMemories(channelId, messages) {
+  async recallMemories(channelId, trigger, messages, triggerMessage) {
     if (!this.memoryClient || !this.memoryClient.isEnabled || !this.memoryClient.isEnabled() || !channelId) {
       return [];
     }
 
-    const query = this.buildRecallQuery(messages);
-    if (!query) {
+    const recallQuery = this.buildRecallQuery(trigger, messages, triggerMessage);
+    if (!recallQuery.query) {
       return [];
     }
 
     try {
-      const result = await this.memoryClient.recall(channelId, query);
+      const result = await this.memoryClient.recall(channelId, recallQuery.query);
       const memories = Array.isArray(result && result.memories) ? result.memories : [];
-      return memories.slice(0, MEMORY_FACT_LIMIT);
+      const selectedMemories = memories.slice(0, MEMORY_FACT_LIMIT);
+      const ids = selectedMemories
+        .map(memory => String(memory && memory.id || '').trim())
+        .filter(Boolean)
+        .join(',');
+
+      console.log(
+        '[memory] recall channel=%s mode=%s query_messages=%d query_chars=%d returned_count=%d attached_count=%d ids=%s',
+        channelId,
+        recallQuery.mode,
+        recallQuery.messageCount,
+        Array.from(recallQuery.query).length,
+        memories.length,
+        selectedMemories.length,
+        ids || '(none)'
+      );
+      return selectedMemories;
     } catch (error) {
       console.warn('[memory] recall unavailable code=%s status=%s', error && error.code || '', error && error.statusCode || '');
       return [];
@@ -744,6 +777,7 @@ class AIChatResponder {
     const recentMessages = this.getRecentContextMessages(input);
     const oldestAgeMs = recentMessages.length > 0 ? input.now - recentMessages[0].ts : 0;
     const requestBody = this.buildRequestBody(input, recentMessages);
+    const memoryBackgroundIncluded = requestBody.messages[1].content.includes('Untrusted fact background:');
 
     if (this.config.api_key) {
       headers[this.config.api_key_header] = this.config.api_key_prefix + this.config.api_key;
@@ -759,12 +793,13 @@ class AIChatResponder {
     }
 
     console.log(
-      '[aichat] sending channel=%s reason=%s context_count=%d oldest_age_ms=%d max_context_messages=%d metadata=%s',
+      '[aichat] sending channel=%s reason=%s context_count=%d oldest_age_ms=%d max_context_messages=%d memory_background=%s metadata=%s',
       input.channel,
       input.trigger,
       recentMessages.length,
       oldestAgeMs,
       this.config.max_context_messages,
+      memoryBackgroundIncluded,
       serializeForLog(input.metadata || {})
     );
 
@@ -953,7 +988,10 @@ class AIChatResponder {
 
     try {
       console.log('[aichat] trigger channel=%s reason=%s count=%d', channel, trigger, activityCount);
-      const memoryFacts = await this.recallMemories(input && input.channelId, state.messages);
+      const memoryFacts = await this.recallMemories(input && input.channelId, trigger, state.messages, {
+        username,
+        text
+      });
       const result = await this.requestReply({
         channel,
         channelId: input && input.channelId,

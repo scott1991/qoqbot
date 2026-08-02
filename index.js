@@ -1,9 +1,10 @@
 const path = require('path');
 const WebSocket = require('ws');
-const { QoqCommandoClient, normalizeMessageContext } = require('qoq-commando');
+const { HelixChatApi, QoqCommandoClient, normalizeMessageContext } = require('qoq-commando');
 const config = require('./config.json');
 const AIChatResponder = require('./service/aiChatResponder');
 const AutoRefreshingTokenManager = require('./service/autoRefreshingTokenManager');
+const ResilientEventSubGateway = require('./service/resilientEventSubGateway');
 const TwitchConfigTokenProvider = require('./service/twitchConfigTokenProvider');
 
 function normalizeUsername(username) {
@@ -256,6 +257,18 @@ async function createClient(
         ignoredUsernames: botConfig.ignored_usernames,
         ignoredUserIds: botConfig.ignored_user_ids
     });
+    const helixChatApi = new HelixChatApi({
+        clientId: botConfig.client_id,
+        tokenManager,
+        fetchImpl
+    });
+    const eventSubGateway = new ResilientEventSubGateway({
+        tokenManager,
+        helixApi: helixChatApi,
+        broadcasterUserId: identity.broadcasterUserId,
+        senderUserId: identity.senderUserId,
+        webSocketFactory: url => new WebSocket(url)
+    });
 
     const client = new QoqBotClient({
         clientId: botConfig.client_id,
@@ -266,8 +279,9 @@ async function createClient(
         prefix: '!',
         logChatMessages: botConfig.log_chat_messages === true,
         fetchImpl,
-        webSocketFactory: url => new WebSocket(url),
-        tokenManager
+        tokenManager,
+        helixChatApi,
+        eventSubGateway
     }, aiChatResponder, ignoredUsers);
 
     client.eventSubGateway.on('session_welcome', () => {
@@ -275,6 +289,21 @@ async function createClient(
     });
     client.eventSubGateway.on('disconnected', () => {
         console.warn('disconnected from Twitch EventSub for %s', identity.channel);
+    });
+    client.eventSubGateway.on('reconnecting', ({ delay, attempt }) => {
+        console.warn(
+            'reconnecting to Twitch EventSub for %s in %dms (attempt %d)',
+            identity.channel,
+            delay,
+            attempt
+        );
+    });
+    client.eventSubGateway.on('revocation', subscription => {
+        console.warn(
+            'Twitch EventSub subscription revoked for %s: %s',
+            identity.channel,
+            subscription && subscription.status || 'unknown'
+        );
     });
     client.eventSubGateway.on('error', error => {
         console.error(error);

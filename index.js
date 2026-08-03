@@ -204,7 +204,8 @@ class QoqBotClient extends QoqCommandoClient {
                 channelId: msg.channelId || this.broadcasterUserId,
                 text: msg.messageText,
                 ts: Date.parse(msg.timestamp) || Date.now(),
-                isSelf: userId === this.senderUserId
+                isSelf: userId === this.senderUserId,
+                isBroadcaster: userId === this.broadcasterUserId
             });
 
             if (reply) {
@@ -269,7 +270,8 @@ async function createClient(
         ignoredUsernames: botConfig.ignored_usernames,
         ignoredUserIds: botConfig.ignored_user_ids,
         memoryClient,
-        memoryQueryMessages: memoryConfig.query_messages
+        memoryQueryMessages: memoryConfig.query_messages,
+        autoCaptureConfig: memoryConfig.auto_capture
     });
 
     const client = new QoqBotClient({

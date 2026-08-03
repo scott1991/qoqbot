@@ -24,7 +24,19 @@
     "base_url": "",
     "api_token": "",
     "request_timeout_ms": 3000,
-    "query_messages": 5
+    "query_messages": 5,
+    "auto_capture": {
+      "enabled": false,
+      "dry_run": false,
+      "min_confidence": 0.85,
+      "max_candidates_per_reply": 1,
+      "viewer_confirmation_count": 2,
+      "allowed_kinds": [
+        "stable_fact",
+        "preference",
+        "channel_lore"
+      ]
+    }
   },
   "aichat": {
     "enabled": true,

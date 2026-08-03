@@ -1,11 +1,14 @@
 'use strict';
 
+const { normalizeAutoCaptureConfig } = require('./autoMemory');
+
 const DEFAULT_MEMORY_CONFIG = {
   enabled: false,
   base_url: '',
   api_token: '',
   request_timeout_ms: 3000,
-  query_messages: 5
+  query_messages: 5,
+  auto_capture: normalizeAutoCaptureConfig()
 };
 
 class MemoryClientError extends Error {
@@ -45,7 +48,8 @@ function buildMemoryConfig(config) {
     base_url: String(input.base_url || '').trim().replace(/\/+$/, ''),
     api_token: String(input.api_token || '').trim(),
     request_timeout_ms: getFiniteTimeout(input.request_timeout_ms),
-    query_messages: getQueryMessageLimit(input.query_messages)
+    query_messages: getQueryMessageLimit(input.query_messages),
+    auto_capture: normalizeAutoCaptureConfig(input.auto_capture)
   };
 }
 

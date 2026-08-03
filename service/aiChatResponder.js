@@ -1,6 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const got = require('got');
+const {
+  normalizeAutoCaptureConfig,
+  normalizeFact,
+  parseAIEnvelope,
+  validateCandidate
+} = require('./autoMemory');
 
 const DEFAULT_CONFIG = {
   enabled: false,
@@ -49,6 +55,15 @@ const MAX_CONTEXT_PREVIEW_LINES = 5;
 const MEMORY_QUERY_MESSAGE_LIMIT = 5;
 const MEMORY_QUERY_CHAR_LIMIT = 1000;
 const MEMORY_FACT_LIMIT = 4;
+const STRUCTURED_OUTPUT_INSTRUCTION = [
+  '',
+  'Return exactly one JSON object with only these top-level fields:',
+  '{"reply":"one chat message","memory_candidate":null}',
+  'memory_candidate must be null unless recent human chat directly supports one durable fact.',
+  'When present it must be {"fact":"standalone fact","kind":"stable_fact|preference|channel_lore","confidence":0.0,"evidence":[1]}.',
+  'Evidence numbers refer only to numbered [evidence N] recent-chat lines. Never cite self/bot output or retrieved memory.',
+  'If safety filtering applies, return {"reply":"filtered","memory_candidate":null}. Do not output Markdown or any text outside JSON.'
+].join('\n');
 
 function normalizeChannelName(channel) {
   if (!channel) {
@@ -239,6 +254,7 @@ class AIChatResponder {
     this.memoryQueryMessages = options && Number.isSafeInteger(options.memoryQueryMessages)
       ? options.memoryQueryMessages
       : MEMORY_QUERY_MESSAGE_LIMIT;
+    this.autoCaptureConfig = normalizeAutoCaptureConfig(options && options.autoCaptureConfig);
   }
 
   buildConfig(config, clientUsername, ignoredUsers, ignoredUsernames, ignoredUserIds) {
@@ -366,7 +382,8 @@ class AIChatResponder {
         messages: [],
         messagesSinceReply: 0,
         lastTriggerAt: 0,
-        pending: false
+        pending: false,
+        nextEvidenceId: 1
       });
     }
 
@@ -431,6 +448,10 @@ class AIChatResponder {
   addContextMessage(state, message, options) {
     const shouldCountActivity = !options || options.countActivity !== false;
 
+    if (!message.isSelf) {
+      message.evidenceId = state.nextEvidenceId;
+      state.nextEvidenceId += 1;
+    }
     state.messages.push(message);
 
     while (state.messages.length > this.config.max_context_messages) {
@@ -447,7 +468,8 @@ class AIChatResponder {
       const username = message.username || 'user';
       const label = message.isSelf ? username + ' [self/bot output]' : username;
       const text = String(message.text || '').replace(/\s+/g, ' ').trim();
-      return label + ': ' + text;
+      const evidenceLabel = Number.isSafeInteger(message.evidenceId) ? '[evidence ' + message.evidenceId + '] ' : '';
+      return evidenceLabel + label + ': ' + text;
     });
   }
 
@@ -519,7 +541,7 @@ class AIChatResponder {
       messages: [
         {
           role: 'system',
-          content: this.config.system_prompt
+          content: this.config.system_prompt + STRUCTURED_OUTPUT_INSTRUCTION
         },
         {
           role: 'user',
@@ -828,12 +850,21 @@ class AIChatResponder {
 
     const body = response.body || {};
     const choice = Array.isArray(body.choices) ? body.choices[0] : null;
-    const reply = choice && choice.message
+    const rawReply = choice && choice.message
       ? this.extractTextContent(choice.message.content)
       : (choice && typeof choice.text === 'string' ? choice.text : '');
+    const envelope = parseAIEnvelope(this.stripThinkTags(rawReply));
+
+    if (envelope.format === 'invalid_json') {
+      console.warn('[aichat] response rejected reason=invalid-json');
+    } else if (envelope.format === 'invalid_schema') {
+      console.warn('[aichat] response candidate discarded reason=invalid-envelope-schema');
+    }
 
     return {
-      reply: this.sanitizeReply(reply),
+      reply: this.sanitizeReply(envelope.reply),
+      memoryCandidate: envelope.memoryCandidate,
+      responseFormat: envelope.format,
       responseId: body.id || '',
       responseModel: body.model || '',
       responseProvider: body.provider || ''
@@ -944,6 +975,7 @@ class AIChatResponder {
       if (!isCommand) {
         this.addContextMessage(state, {
           username,
+          userId,
           text,
           isSelf: true,
           ts: now
@@ -961,6 +993,8 @@ class AIChatResponder {
     if (!isCommand) {
       this.addContextMessage(state, {
         username,
+        userId,
+        isBroadcaster: Boolean(input && input.isBroadcaster),
         text,
         ts: now
       });
@@ -1011,6 +1045,16 @@ class AIChatResponder {
 
       const outputReply = this.formatReply(reply, result && result.responseModel ? result.responseModel : '');
 
+      if (reply.toLowerCase() !== 'filtered' && result && result.memoryCandidate !== null && typeof result.memoryCandidate !== 'undefined') {
+        this.processMemoryCandidate({
+          channelId: input && input.channelId,
+          messages: state.messages.slice(),
+          candidate: result.memoryCandidate
+        }).catch(error => {
+          console.warn('[memory] auto-candidate decision=rejected reason=processing-failure code=%s', error && error.code || '');
+        });
+      }
+
       state.messagesSinceReply = 0;
 
       console.log(
@@ -1029,6 +1073,59 @@ class AIChatResponder {
     } finally {
       state.pending = false;
     }
+  }
+
+  async processMemoryCandidate(input) {
+    if (!this.autoCaptureConfig.enabled) return { decision: 'disabled' };
+
+    const channelId = String(input && input.channelId || '').trim();
+    const validation = validateCandidate(
+      input && input.candidate,
+      input && input.messages,
+      this.autoCaptureConfig
+    );
+    if (!validation.valid) {
+      console.log('[memory] auto-candidate channel=%s decision=rejected reason=%s', channelId, validation.reason);
+      return { decision: 'rejected', reason: validation.reason };
+    }
+
+    if (validation.kind !== 'stable_fact') {
+      console.log('[memory] auto-candidate channel=%s decision=rejected reason=conservative-kind kind=%s', channelId, validation.kind);
+      return { decision: 'rejected', reason: 'conservative-kind' };
+    }
+    if (!validation.evidence.every(message => message.isBroadcaster)) {
+      console.log('[memory] auto-candidate channel=%s decision=rejected reason=viewer-source kind=%s confidence=%s', channelId, validation.kind, validation.confidence);
+      return { decision: 'rejected', reason: 'viewer-source' };
+    }
+    if (!channelId || !this.memoryClient || !this.memoryClient.isEnabled || !this.memoryClient.isEnabled()) {
+      console.log('[memory] auto-candidate channel=%s decision=rejected reason=memory-disabled', channelId);
+      return { decision: 'rejected', reason: 'memory-disabled' };
+    }
+
+    const recalled = await this.memoryClient.recall(channelId, validation.fact);
+    const memories = Array.isArray(recalled && recalled.memories) ? recalled.memories : [];
+    const normalizedFact = normalizeFact(validation.fact).toLowerCase();
+    const duplicate = memories.find(memory => {
+      const sameContent = normalizeFact(memory && memory.content).toLowerCase() === normalizedFact;
+      return sameContent || Number(memory && memory.score) >= this.autoCaptureConfig.duplicate_score;
+    });
+    if (duplicate) {
+      console.log('[memory] auto-candidate channel=%s decision=duplicate matched_id=%s', channelId, String(duplicate.id || ''));
+      return { decision: 'duplicate', matchedId: String(duplicate.id || '') };
+    }
+
+    if (this.autoCaptureConfig.dry_run) {
+      console.log('[memory] auto-candidate channel=%s decision=dry-run kind=%s confidence=%s', channelId, validation.kind, validation.confidence);
+      return { decision: 'dry-run' };
+    }
+
+    const saved = await this.memoryClient.remember(channelId, validation.fact);
+    if (saved && saved.duplicate) {
+      console.log('[memory] auto-candidate channel=%s decision=duplicate matched_id=%s', channelId, String(saved.id || ''));
+      return { decision: 'duplicate', matchedId: String(saved.id || '') };
+    }
+    console.log('[memory] auto-candidate channel=%s decision=saved kind=%s confidence=%s id=%s', channelId, validation.kind, validation.confidence, String(saved && saved.id || ''));
+    return { decision: 'saved', id: String(saved && saved.id || '') };
   }
 }
 

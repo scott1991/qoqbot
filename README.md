@@ -137,11 +137,21 @@ npm test
   "base_url": "https://qoqbot-memory.<your-subdomain>.workers.dev",
   "api_token": "",
   "request_timeout_ms": 3000,
-  "query_messages": 5
+  "query_messages": 5,
+  "auto_capture": {
+    "enabled": false,
+    "dry_run": false,
+    "min_confidence": 0.85,
+    "max_candidates_per_reply": 1,
+    "viewer_confirmation_count": 2,
+    "allowed_kinds": ["stable_fact", "preference", "channel_lore"]
+  }
 }
 ```
 
 啟用後若漏填 `base_url` 或 `api_token`，bot 會在啟動階段以明確錯誤停止。API timeout 或 Worker 錯誤不會列印 token 或完整記憶內容。
+
+`auto_capture.enabled` 預設關閉。第一階段只會儲存由台主本人訊息直接支持、通過程式驗證且沒有重複的 `stable_fact`；一般觀眾、偏好與頻道哏候選先拒絕，等待後續 pending 審核功能。`dry_run: true` 會執行驗證與去重並記錄安全 log，但不寫入。自動候選處理失敗不會阻擋聊天室回覆。
 
 ## AI Chat
 
@@ -171,7 +181,7 @@ AI chat 設定在 `config.json` 的 `aichat` 區塊，範例可參考 [`config.e
 
 這樣只會在 log 中看到 AI 回覆，不會真的發到聊天室。
 
-系統 prompt 預設由 [`prompts/aichat-system.txt`](/home/cake/code/node/qoqbot/prompts/aichat-system.txt) 載入。
+系統 prompt 預設由 [`prompts/aichat-system.txt`](/home/cake/code/node/qoqbot/prompts/aichat-system.txt) 載入。模型回覆使用固定 JSON envelope；bot 永遠只將其中清理過的 `reply` 欄位送到聊天室。舊式純文字暫時仍可作為 reply，但疑似 JSON 且解析失敗時會整則丟棄，避免洩漏候選或結構內容。
 
 如果要接 Cloudflare AI Gateway，可以把 `base_url` 設成 `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/compat`，並把：
 

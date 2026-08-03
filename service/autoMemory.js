@@ -21,10 +21,12 @@ const SENSITIVE_PATTERNS = [
   /(?:https?:\/\/|curl\s|wget\s|sudo\s|rm\s+-|powershell|cmd\.exe)/i,
   /(?:犯罪|犯案|性侵|騷擾|吸毒|詐騙|偷竊|殺人)/i
 ];
+
 const TEMPORARY_PATTERNS = [
   /(?:現在|目前|今天|今晚|剛剛|剛才|這場|這局|正在|等等|待會|暫時|剛|明天|昨天)/i,
   /(?:開台|直播中|穿著|穿了|輸了|贏了|心情|生氣|難過|累了|餓了)/i
 ];
+
 const SPECULATIVE_PATTERNS = [
   /[?？]$/,
   /(?:可能|也許|或許|大概|好像|聽說|據說|猜|感覺|應該|是不是|嗎|吧)$/i,
@@ -40,7 +42,11 @@ function characterCount(value) {
 }
 
 function normalizeFact(value) {
-  return String(value || '').normalize('NFKC').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function normalizeAutoCaptureConfig(config) {
@@ -59,10 +65,15 @@ function normalizeAutoCaptureConfig(config) {
       ? minConfidence
       : DEFAULT_AUTO_CAPTURE_CONFIG.min_confidence,
     max_candidates_per_reply: 1,
-    viewer_confirmation_count: Math.max(1, Number.isSafeInteger(Number(input.viewer_confirmation_count))
-      ? Number(input.viewer_confirmation_count)
-      : DEFAULT_AUTO_CAPTURE_CONFIG.viewer_confirmation_count),
-    allowed_kinds: allowedKinds.length ? Array.from(new Set(allowedKinds)) : DEFAULT_AUTO_CAPTURE_CONFIG.allowed_kinds.slice(),
+    viewer_confirmation_count: Math.max(
+      1,
+      Number.isSafeInteger(Number(input.viewer_confirmation_count))
+        ? Number(input.viewer_confirmation_count)
+        : DEFAULT_AUTO_CAPTURE_CONFIG.viewer_confirmation_count
+    ),
+    allowed_kinds: allowedKinds.length
+      ? Array.from(new Set(allowedKinds))
+      : DEFAULT_AUTO_CAPTURE_CONFIG.allowed_kinds.slice(),
     max_fact_chars: Number.isSafeInteger(maxFactChars) && maxFactChars > 0 && maxFactChars <= 400
       ? maxFactChars
       : DEFAULT_AUTO_CAPTURE_CONFIG.max_fact_chars,
@@ -85,16 +96,21 @@ function stripJsonFence(text) {
 
 function parseAIEnvelope(raw) {
   const text = String(raw || '').trim();
-  if (!text) return { reply: '', memoryCandidate: null, format: 'empty' };
+
+  if (!text) {
+    return { reply: '', memoryCandidate: null, format: 'empty' };
+  }
 
   const jsonText = stripJsonFence(text);
   let parsed;
+
   try {
     parsed = JSON.parse(jsonText);
   } catch (error) {
     if (looksLikeJson(text)) {
       return { reply: '', memoryCandidate: null, format: 'invalid_json' };
     }
+
     return { reply: text, memoryCandidate: null, format: 'legacy_text' };
   }
 
@@ -109,30 +125,56 @@ function parseAIEnvelope(raw) {
 
   return {
     reply: parsed.reply,
-    memoryCandidate: Object.prototype.hasOwnProperty.call(parsed, 'memory_candidate') ? parsed.memory_candidate : null,
+    memoryCandidate: Object.prototype.hasOwnProperty.call(parsed, 'memory_candidate')
+      ? parsed.memory_candidate
+      : null,
     format: 'json'
   };
 }
 
 function validateCandidate(candidate, messages, config) {
-  if (!isPlainObject(candidate)) return { valid: false, reason: 'invalid-schema' };
+  if (!isPlainObject(candidate)) {
+    return { valid: false, reason: 'invalid-schema' };
+  }
+
   const keys = Object.keys(candidate);
   const required = ['fact', 'kind', 'confidence', 'evidence'];
-  if (keys.length !== required.length || required.some(key => !Object.prototype.hasOwnProperty.call(candidate, key))) {
+  if (
+    keys.length !== required.length ||
+    required.some(key => !Object.prototype.hasOwnProperty.call(candidate, key))
+  ) {
     return { valid: false, reason: 'invalid-schema' };
   }
 
   if (typeof candidate.fact !== 'string' || typeof candidate.kind !== 'string') {
     return { valid: false, reason: 'invalid-schema' };
   }
+
   const fact = normalizeFact(candidate.fact);
   const confidence = candidate.confidence;
-  if (!fact || characterCount(fact) > config.max_fact_chars) return { valid: false, reason: 'invalid-content' };
-  if (!config.allowed_kinds.includes(candidate.kind)) return { valid: false, reason: 'invalid-kind' };
-  if (typeof confidence !== 'number' || !Number.isFinite(confidence) || confidence < config.min_confidence || confidence > 1) {
+
+  if (!fact || characterCount(fact) > config.max_fact_chars) {
+    return { valid: false, reason: 'invalid-content' };
+  }
+
+  if (!config.allowed_kinds.includes(candidate.kind)) {
+    return { valid: false, reason: 'invalid-kind' };
+  }
+
+  if (
+    typeof confidence !== 'number' ||
+    !Number.isFinite(confidence) ||
+    confidence < config.min_confidence ||
+    confidence > 1
+  ) {
     return { valid: false, reason: 'low-confidence' };
   }
-  if (!Array.isArray(candidate.evidence) || candidate.evidence.length < 1 || candidate.evidence.some(id => !Number.isSafeInteger(id))) {
+
+  if (
+    !Array.isArray(candidate.evidence) ||
+    candidate.evidence.length < 1 ||
+    candidate.evidence.some(id => !Number.isSafeInteger(id))
+  ) {
     return { valid: false, reason: 'invalid-evidence' };
   }
 
@@ -141,11 +183,26 @@ function validateCandidate(candidate, messages, config) {
   if (evidence.some(message => !message || message.isSelf || !message.userId)) {
     return { valid: false, reason: 'invalid-evidence' };
   }
-  if (SENSITIVE_PATTERNS.some(pattern => pattern.test(fact))) return { valid: false, reason: 'sensitive-content' };
-  if (TEMPORARY_PATTERNS.some(pattern => pattern.test(fact))) return { valid: false, reason: 'temporary-content' };
-  if (SPECULATIVE_PATTERNS.some(pattern => pattern.test(fact))) return { valid: false, reason: 'non-factual-content' };
 
-  return { valid: true, fact, kind: candidate.kind, confidence, evidence };
+  if (SENSITIVE_PATTERNS.some(pattern => pattern.test(fact))) {
+    return { valid: false, reason: 'sensitive-content' };
+  }
+
+  if (TEMPORARY_PATTERNS.some(pattern => pattern.test(fact))) {
+    return { valid: false, reason: 'temporary-content' };
+  }
+
+  if (SPECULATIVE_PATTERNS.some(pattern => pattern.test(fact))) {
+    return { valid: false, reason: 'non-factual-content' };
+  }
+
+  return {
+    valid: true,
+    fact,
+    kind: candidate.kind,
+    confidence,
+    evidence
+  };
 }
 
 module.exports = {

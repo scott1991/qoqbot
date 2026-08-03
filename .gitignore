@@ -76,4 +76,6 @@ typings/
 .fusebox/
 config.json
 database.sqlite3
+cloudflare/memory-worker/.wrangler/
+cloudflare/memory-worker/.dev.vars
 database.sqlite3

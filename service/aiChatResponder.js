@@ -3,7 +3,6 @@ const path = require('path');
 const got = require('got');
 const {
   normalizeAutoCaptureConfig,
-  normalizeFact,
   parseAIEnvelope,
   validateCandidate
 } = require('./autoMemory');
@@ -47,6 +46,7 @@ const DEFAULT_CONFIG = {
   max_output_chars: 180,
   strip_think_tags: true,
   temperature: 0.8,
+  timezone: 'Asia/Taipei',
   system_prompt: 'You are a Twitch chat bot. Reply briefly, naturally, and stay relevant to the recent chat.'
 };
 
@@ -60,8 +60,10 @@ const STRUCTURED_OUTPUT_INSTRUCTION = [
   'Return exactly one JSON object with only these top-level fields:',
   '{"reply":"one chat message","memory_candidate":null}',
   'memory_candidate must be null unless recent human chat directly supports one durable fact.',
-  'When present it must be {"fact":"standalone fact","kind":"stable_fact|preference|channel_lore","confidence":0.0,"evidence":[1]}.',
+  'When present it must be {"fact":"standalone durable fact","kind":"stable_fact|preference|channel_lore","confidence":0.0,"evidence":[1],"subject":"entity","predicate":"lowercase_snake_case_relation","value":"durable value"}.',
   'Evidence numbers refer only to numbered [evidence N] recent-chat lines. Never cite self/bot output or retrieved memory.',
+  'Temporary or time-relative facts (for example today, tonight, now, currently, just now, later, tomorrow, yesterday, this stream, or this game) must use memory_candidate:null.',
+  'Never remove a time word or generalize a temporary statement merely to make it look durable.',
   'If safety filtering applies, return {"reply":"filtered","memory_candidate":null}. Do not output Markdown or any text outside JSON.'
 ].join('\n');
 
@@ -214,6 +216,25 @@ function wait(ms) {
   });
 }
 
+function formatCurrentTime(now, timezone) {
+  const date = new Date(Number.isFinite(now) ? now : Date.now());
+
+  try {
+    return new Intl.DateTimeFormat('sv-SE', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23'
+    }).format(date) + ' ' + timezone;
+  } catch (error) {
+    return date.toISOString() + ' UTC';
+  }
+}
+
 function loadSystemPrompt(promptFile, fallbackPrompt) {
   if (!promptFile) {
     return fallbackPrompt;
@@ -342,6 +363,7 @@ class AIChatResponder {
       ? Boolean(merged.strip_think_tags)
       : DEFAULT_CONFIG.strip_think_tags;
     merged.temperature = getFiniteNumber(merged.temperature, DEFAULT_CONFIG.temperature);
+    merged.timezone = String(merged.timezone || DEFAULT_CONFIG.timezone).trim() || DEFAULT_CONFIG.timezone;
     merged.base_url = String(merged.base_url || DEFAULT_CONFIG.base_url).trim();
     merged.api_key = String(merged.api_key || '');
     merged.api_key_header = String(merged.api_key_header || DEFAULT_CONFIG.api_key_header).trim() || DEFAULT_CONFIG.api_key_header;
@@ -527,6 +549,7 @@ class AIChatResponder {
     const userContent = [
       'Channel: ' + input.channel,
       'Trigger: ' + input.trigger,
+      'Current time: ' + formatCurrentTime(input.now, this.config.timezone),
       'Context note: Lines marked [self/bot output] were sent by this account and may be casual chat or command/tool replies. Generate only the next casual Twitch chat message.',
       'Recent chat:',
       recentLines.length ? recentLines.join('\n') : '(none)'
@@ -1089,29 +1112,30 @@ class AIChatResponder {
       return { decision: 'rejected', reason: validation.reason };
     }
 
-    if (validation.kind !== 'stable_fact') {
-      console.log('[memory] auto-candidate channel=%s decision=rejected reason=conservative-kind kind=%s', channelId, validation.kind);
-      return { decision: 'rejected', reason: 'conservative-kind' };
+    const broadcasterSupported = validation.evidence.some(message => message.isBroadcaster);
+    const independentViewerCount = new Set(
+      validation.evidence.filter(message => !message.isBroadcaster).map(message => message.userId)
+    ).size;
+    if (!broadcasterSupported && independentViewerCount < this.autoCaptureConfig.viewer_confirmation_count) {
+      console.log(
+        '[memory] auto-candidate channel=%s decision=rejected reason=insufficient-confirmation kind=%s confidence=%s viewers=%d required=%d',
+        channelId,
+        validation.kind,
+        validation.confidence,
+        independentViewerCount,
+        this.autoCaptureConfig.viewer_confirmation_count
+      );
+      return { decision: 'rejected', reason: 'insufficient-confirmation' };
     }
-    if (!validation.evidence.every(message => message.isBroadcaster)) {
-      console.log('[memory] auto-candidate channel=%s decision=rejected reason=viewer-source kind=%s confidence=%s', channelId, validation.kind, validation.confidence);
-      return { decision: 'rejected', reason: 'viewer-source' };
-    }
-    if (!channelId || !this.memoryClient || !this.memoryClient.isEnabled || !this.memoryClient.isEnabled()) {
+    if (
+      !channelId ||
+      !this.memoryClient ||
+      !this.memoryClient.isEnabled ||
+      !this.memoryClient.isEnabled() ||
+      typeof this.memoryClient.rememberAuto !== 'function'
+    ) {
       console.log('[memory] auto-candidate channel=%s decision=rejected reason=memory-disabled', channelId);
       return { decision: 'rejected', reason: 'memory-disabled' };
-    }
-
-    const recalled = await this.memoryClient.recall(channelId, validation.fact);
-    const memories = Array.isArray(recalled && recalled.memories) ? recalled.memories : [];
-    const normalizedFact = normalizeFact(validation.fact).toLowerCase();
-    const duplicate = memories.find(memory => {
-      const sameContent = normalizeFact(memory && memory.content).toLowerCase() === normalizedFact;
-      return sameContent || Number(memory && memory.score) >= this.autoCaptureConfig.duplicate_score;
-    });
-    if (duplicate) {
-      console.log('[memory] auto-candidate channel=%s decision=duplicate matched_id=%s', channelId, String(duplicate.id || ''));
-      return { decision: 'duplicate', matchedId: String(duplicate.id || '') };
     }
 
     if (this.autoCaptureConfig.dry_run) {
@@ -1119,10 +1143,26 @@ class AIChatResponder {
       return { decision: 'dry-run' };
     }
 
-    const saved = await this.memoryClient.remember(channelId, validation.fact);
-    if (saved && saved.duplicate) {
-      console.log('[memory] auto-candidate channel=%s decision=duplicate matched_id=%s', channelId, String(saved.id || ''));
-      return { decision: 'duplicate', matchedId: String(saved.id || '') };
+    const saved = await this.memoryClient.rememberAuto(channelId, validation);
+    const decision = String(saved && saved.decision || (saved && saved.duplicate ? 'duplicate' : 'saved'));
+    if (decision === 'duplicate') {
+      console.log('[memory] auto-candidate channel=%s decision=duplicate matched_id=%s', channelId, String(saved && saved.id || ''));
+      return { decision: 'duplicate', matchedId: String(saved && saved.id || '') };
+    }
+    if (decision === 'superseded') {
+      console.log(
+        '[memory] auto-candidate channel=%s decision=superseded kind=%s confidence=%s id=%s previous_id=%s',
+        channelId,
+        validation.kind,
+        validation.confidence,
+        String(saved && saved.id || ''),
+        String(saved && saved.superseded_id || '')
+      );
+      return {
+        decision: 'superseded',
+        id: String(saved && saved.id || ''),
+        supersededId: String(saved && saved.superseded_id || '')
+      };
     }
     console.log('[memory] auto-candidate channel=%s decision=saved kind=%s confidence=%s id=%s', channelId, validation.kind, validation.confidence, String(saved && saved.id || ''));
     return { decision: 'saved', id: String(saved && saved.id || '') };

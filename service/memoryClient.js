@@ -8,6 +8,8 @@ const DEFAULT_MEMORY_CONFIG = {
   api_token: '',
   request_timeout_ms: 3000,
   query_messages: 5,
+  recall_min_score: 0.65,
+  recall_limit: 8,
   auto_capture: normalizeAutoCaptureConfig()
 };
 
@@ -40,6 +42,32 @@ function getQueryMessageLimit(value) {
   return limit;
 }
 
+function getRecallMinScore(value) {
+  if (typeof value === 'undefined' || value === null || value === '') {
+    return DEFAULT_MEMORY_CONFIG.recall_min_score;
+  }
+
+  const score = Number(value);
+  if (!Number.isFinite(score) || score < 0 || score > 1) {
+    throw new Error('memory.recall_min_score must be a number from 0 to 1');
+  }
+
+  return score;
+}
+
+function getRecallLimit(value) {
+  if (typeof value === 'undefined' || value === null || value === '') {
+    return DEFAULT_MEMORY_CONFIG.recall_limit;
+  }
+
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 8) {
+    throw new Error('memory.recall_limit must be an integer from 1 to 8');
+  }
+
+  return limit;
+}
+
 function buildMemoryConfig(config) {
   const input = config && typeof config === 'object' ? config : {};
 
@@ -47,8 +75,12 @@ function buildMemoryConfig(config) {
     enabled: Boolean(input.enabled),
     base_url: String(input.base_url || '').trim().replace(/\/+$/, ''),
     api_token: String(input.api_token || '').trim(),
-    request_timeout_ms: getFiniteTimeout(input.request_timeout_ms),
+    request_timeout_ms: getFiniteTimeout(
+      typeof input.request_timeout_ms === 'undefined' ? input.timeout_ms : input.request_timeout_ms
+    ),
     query_messages: getQueryMessageLimit(input.query_messages),
+    recall_min_score: getRecallMinScore(input.recall_min_score),
+    recall_limit: getRecallLimit(input.recall_limit),
     auto_capture: normalizeAutoCaptureConfig(input.auto_capture)
   };
 }
@@ -88,6 +120,22 @@ class MemoryClient {
     });
   }
 
+  async rememberAuto(channelId, candidate) {
+    return this.request('/v1/auto-memories', {
+      method: 'POST',
+      body: {
+        channel_id: String(channelId),
+        content: String(candidate.fact),
+        kind: String(candidate.kind),
+        confidence: candidate.confidence,
+        subject: String(candidate.subject),
+        predicate: String(candidate.predicate),
+        value: String(candidate.value),
+        retention_days: candidate.retentionDays
+      }
+    });
+  }
+
   async list(channelId, page = 1) {
     const query = new URLSearchParams({ channel_id: String(channelId), page: String(page) });
     return this.request('/v1/memories?' + query.toString());
@@ -103,7 +151,12 @@ class MemoryClient {
   async recall(channelId, query) {
     return this.request('/v1/recall', {
       method: 'POST',
-      body: { channel_id: String(channelId), query: String(query) }
+      body: {
+        channel_id: String(channelId),
+        query: String(query),
+        min_score: this.config.recall_min_score,
+        limit: this.config.recall_limit
+      }
     });
   }
 

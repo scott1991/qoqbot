@@ -25,12 +25,19 @@
     "api_token": "",
     "request_timeout_ms": 3000,
     "query_messages": 5,
+    "recall_min_score": 0.65,
+    "recall_limit": 8,
     "auto_capture": {
       "enabled": false,
       "dry_run": false,
       "min_confidence": 0.85,
       "max_candidates_per_reply": 1,
       "viewer_confirmation_count": 2,
+      "retention_days": {
+        "stable_fact": 365,
+        "preference": 180,
+        "channel_lore": 730
+      },
       "allowed_kinds": [
         "stable_fact",
         "preference",
@@ -76,6 +83,7 @@
     "max_output_chars": 120,
     "strip_think_tags": true,
     "temperature": 0.8,
+    "timezone": "Asia/Taipei",
     "system_prompt_file": "prompts/aichat-system.txt"
   }
 }

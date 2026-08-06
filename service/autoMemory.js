@@ -8,7 +8,12 @@ const DEFAULT_AUTO_CAPTURE_CONFIG = {
   viewer_confirmation_count: 2,
   allowed_kinds: ['stable_fact', 'preference', 'channel_lore'],
   max_fact_chars: 200,
-  duplicate_score: 0.85
+  max_structure_chars: 120,
+  retention_days: {
+    stable_fact: 365,
+    preference: 180,
+    channel_lore: 730
+  }
 };
 
 const SENSITIVE_PATTERNS = [
@@ -53,7 +58,8 @@ function normalizeAutoCaptureConfig(config) {
   const input = isPlainObject(config) ? config : {};
   const minConfidence = Number(input.min_confidence);
   const maxFactChars = Number(input.max_fact_chars);
-  const duplicateScore = Number(input.duplicate_score);
+  const maxStructureChars = Number(input.max_structure_chars);
+  const inputRetentionDays = isPlainObject(input.retention_days) ? input.retention_days : {};
   const allowedKinds = Array.isArray(input.allowed_kinds)
     ? input.allowed_kinds.map(value => String(value || '').trim()).filter(Boolean)
     : DEFAULT_AUTO_CAPTURE_CONFIG.allowed_kinds.slice();
@@ -77,9 +83,16 @@ function normalizeAutoCaptureConfig(config) {
     max_fact_chars: Number.isSafeInteger(maxFactChars) && maxFactChars > 0 && maxFactChars <= 400
       ? maxFactChars
       : DEFAULT_AUTO_CAPTURE_CONFIG.max_fact_chars,
-    duplicate_score: Number.isFinite(duplicateScore) && duplicateScore >= 0 && duplicateScore <= 1
-      ? duplicateScore
-      : DEFAULT_AUTO_CAPTURE_CONFIG.duplicate_score
+    max_structure_chars: Number.isSafeInteger(maxStructureChars) && maxStructureChars > 0 && maxStructureChars <= 200
+      ? maxStructureChars
+      : DEFAULT_AUTO_CAPTURE_CONFIG.max_structure_chars,
+    retention_days: DEFAULT_AUTO_CAPTURE_CONFIG.allowed_kinds.reduce((retentionDays, kind) => {
+      const value = Number(inputRetentionDays[kind]);
+      retentionDays[kind] = Number.isSafeInteger(value) && value >= 1 && value <= 3650
+        ? value
+        : DEFAULT_AUTO_CAPTURE_CONFIG.retention_days[kind];
+      return retentionDays;
+    }, {})
   };
 }
 
@@ -138,7 +151,7 @@ function validateCandidate(candidate, messages, config) {
   }
 
   const keys = Object.keys(candidate);
-  const required = ['fact', 'kind', 'confidence', 'evidence'];
+  const required = ['fact', 'kind', 'confidence', 'evidence', 'subject', 'predicate', 'value'];
   if (
     keys.length !== required.length ||
     required.some(key => !Object.prototype.hasOwnProperty.call(candidate, key))
@@ -146,14 +159,33 @@ function validateCandidate(candidate, messages, config) {
     return { valid: false, reason: 'invalid-schema' };
   }
 
-  if (typeof candidate.fact !== 'string' || typeof candidate.kind !== 'string') {
+  if (
+    typeof candidate.fact !== 'string' ||
+    typeof candidate.kind !== 'string' ||
+    typeof candidate.subject !== 'string' ||
+    typeof candidate.predicate !== 'string' ||
+    typeof candidate.value !== 'string'
+  ) {
     return { valid: false, reason: 'invalid-schema' };
   }
 
   const fact = normalizeFact(candidate.fact);
+  const subject = normalizeFact(candidate.subject);
+  const predicate = normalizeFact(candidate.predicate).toLowerCase();
+  const value = normalizeFact(candidate.value);
   const confidence = candidate.confidence;
 
-  if (!fact || characterCount(fact) > config.max_fact_chars) {
+  if (
+    !fact ||
+    !subject ||
+    !predicate ||
+    !value ||
+    characterCount(fact) > config.max_fact_chars ||
+    characterCount(subject) > config.max_structure_chars ||
+    characterCount(predicate) > config.max_structure_chars ||
+    characterCount(value) > config.max_structure_chars ||
+    !/^[a-z][a-z0-9_]{1,63}$/.test(predicate)
+  ) {
     return { valid: false, reason: 'invalid-content' };
   }
 
@@ -184,15 +216,17 @@ function validateCandidate(candidate, messages, config) {
     return { valid: false, reason: 'invalid-evidence' };
   }
 
-  if (SENSITIVE_PATTERNS.some(pattern => pattern.test(fact))) {
+  const candidateParts = [fact, subject, value];
+
+  if (SENSITIVE_PATTERNS.some(pattern => candidateParts.some(part => pattern.test(part)))) {
     return { valid: false, reason: 'sensitive-content' };
   }
 
-  if (TEMPORARY_PATTERNS.some(pattern => pattern.test(fact))) {
+  if (TEMPORARY_PATTERNS.some(pattern => candidateParts.some(part => pattern.test(part)))) {
     return { valid: false, reason: 'temporary-content' };
   }
 
-  if (SPECULATIVE_PATTERNS.some(pattern => pattern.test(fact))) {
+  if (SPECULATIVE_PATTERNS.some(pattern => candidateParts.some(part => pattern.test(part)))) {
     return { valid: false, reason: 'non-factual-content' };
   }
 
@@ -201,6 +235,10 @@ function validateCandidate(candidate, messages, config) {
     fact,
     kind: candidate.kind,
     confidence,
+    subject,
+    predicate,
+    value,
+    retentionDays: config.retention_days[candidate.kind],
     evidence
   };
 }

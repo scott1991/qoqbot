@@ -32,7 +32,10 @@ function candidate(overrides = {}) {
     fact: '阿龜的項鍊是自己製作的',
     kind: 'stable_fact',
     confidence: 0.92,
-    evidence: [1]
+    evidence: [1],
+    subject: '阿龜',
+    predicate: 'necklace_maker',
+    value: '自己'
   }, overrides);
 }
 
@@ -40,7 +43,7 @@ function makeResponder(autoCaptureOverrides = {}, memoryOverrides = {}) {
   const memoryClient = Object.assign({
     isEnabled: () => true,
     recall: async () => ({ memories: [] }),
-    remember: async () => ({ id: 'AB12CD34' })
+    rememberAuto: async () => ({ id: 'AB12CD34', decision: 'saved' })
   }, memoryOverrides);
 
   return new AIChatResponder({
@@ -87,6 +90,13 @@ test('candidate validation accepts only valid recent human evidence', () => {
 
   const missingEvidence = validateCandidate(candidate({ evidence: [99] }), [humanMessage()], config());
   assert.deepEqual(missingEvidence, { valid: false, reason: 'invalid-evidence' });
+
+  const missingStructure = candidate();
+  delete missingStructure.subject;
+  assert.deepEqual(validateCandidate(missingStructure, [humanMessage()], config()), {
+    valid: false,
+    reason: 'invalid-schema'
+  });
 });
 
 test('candidate validation rejects temporary, sensitive, and speculative content', () => {
@@ -130,16 +140,12 @@ test('recent human messages receive stable evidence IDs while bot output does no
   assert.doesNotMatch(responder.buildContextLines(state.messages)[1], /\[evidence/);
 });
 
-test('broadcaster stable fact is saved after semantic duplicate check', async () => {
+test('broadcaster durable fact is sent to the structured auto-memory endpoint', async () => {
   const calls = [];
   const responder = makeResponder({}, {
-    recall: async (channelId, fact) => {
-      calls.push({ operation: 'recall', channelId, fact });
-      return { memories: [] };
-    },
-    remember: async (channelId, fact) => {
-      calls.push({ operation: 'remember', channelId, fact });
-      return { id: 'AB12CD34' };
+    rememberAuto: async (channelId, savedCandidate) => {
+      calls.push({ operation: 'rememberAuto', channelId, candidate: savedCandidate });
+      return { id: 'AB12CD34', decision: 'saved' };
     }
   });
 
@@ -150,14 +156,14 @@ test('broadcaster stable fact is saved after semantic duplicate check', async ()
   });
 
   assert.deepEqual(result, { decision: 'saved', id: 'AB12CD34' });
-  assert.deepEqual(calls.map(call => call.operation), ['recall', 'remember']);
+  assert.deepEqual(calls.map(call => call.operation), ['rememberAuto']);
+  assert.equal(calls[0].candidate.predicate, 'necklace_maker');
 });
 
-test('viewer candidate is rejected before recall or write', async () => {
+test('a single viewer candidate is rejected before write', async () => {
   let calls = 0;
   const responder = makeResponder({}, {
-    recall: async () => { calls += 1; return { memories: [] }; },
-    remember: async () => { calls += 1; return { id: 'AB12CD34' }; }
+    rememberAuto: async () => { calls += 1; return { id: 'AB12CD34' }; }
   });
 
   const result = await responder.processMemoryCandidate({
@@ -166,15 +172,39 @@ test('viewer candidate is rejected before recall or write', async () => {
     candidate: candidate()
   });
 
-  assert.deepEqual(result, { decision: 'rejected', reason: 'viewer-source' });
+  assert.deepEqual(result, { decision: 'rejected', reason: 'insufficient-confirmation' });
   assert.equal(calls, 0);
 });
 
-test('high similarity recall result prevents a duplicate write', async () => {
-  let rememberCalls = 0;
-  const responder = makeResponder({ duplicate_score: 0.85 }, {
-    recall: async () => ({ memories: [{ id: 'EXISTING', content: '相近內容', score: 0.91 }] }),
-    remember: async () => { rememberCalls += 1; return { id: 'NEW' }; }
+test('independent viewer confirmations can create an active memory without review', async () => {
+  let savedCandidate;
+  const responder = makeResponder({ viewer_confirmation_count: 2 }, {
+    rememberAuto: async (_channelId, value) => {
+      savedCandidate = value;
+      return { id: 'NEW00001', decision: 'saved' };
+    }
+  });
+
+  const result = await responder.processMemoryCandidate({
+    channelId: '20',
+    messages: [
+      humanMessage({ isBroadcaster: false, userId: '11', evidenceId: 1 }),
+      humanMessage({ isBroadcaster: false, userId: '12', evidenceId: 2 })
+    ],
+    candidate: candidate({ evidence: [1, 2], kind: 'channel_lore' })
+  });
+
+  assert.deepEqual(result, { decision: 'saved', id: 'NEW00001' });
+  assert.equal(savedCandidate.kind, 'channel_lore');
+});
+
+test('a conflicting structured fact reports the superseded version', async () => {
+  const responder = makeResponder({}, {
+    rememberAuto: async () => ({
+      id: 'NEW00001',
+      decision: 'superseded',
+      superseded_id: 'OLD00001'
+    })
   });
 
   const result = await responder.processMemoryCandidate({
@@ -183,14 +213,17 @@ test('high similarity recall result prevents a duplicate write', async () => {
     candidate: candidate()
   });
 
-  assert.deepEqual(result, { decision: 'duplicate', matchedId: 'EXISTING' });
-  assert.equal(rememberCalls, 0);
+  assert.deepEqual(result, {
+    decision: 'superseded',
+    id: 'NEW00001',
+    supersededId: 'OLD00001'
+  });
 });
 
 test('dry-run validates and deduplicates without writing', async () => {
   let rememberCalls = 0;
   const responder = makeResponder({ dry_run: true }, {
-    remember: async () => { rememberCalls += 1; return { id: 'NEW' }; }
+    rememberAuto: async () => { rememberCalls += 1; return { id: 'NEW' }; }
   });
 
   const result = await responder.processMemoryCandidate({

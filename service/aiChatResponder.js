@@ -55,7 +55,9 @@ const MAX_CONTEXT_PREVIEW_LINES = 5;
 const MEMORY_QUERY_MESSAGE_LIMIT = 5;
 const MEMORY_QUERY_CHAR_LIMIT = 1000;
 const MEMORY_FACT_LIMIT = 4;
-const STRUCTURED_OUTPUT_INSTRUCTION = [
+// Keep the transport contract separate from the configurable persona and policy prompt.
+// The responder depends on this shape when parsing replies and memory candidates.
+const RESPONSE_FORMAT_CONTRACT = [
   '',
   'Return exactly one JSON object with only these top-level fields:',
   '{"reply":"one chat message","memory_candidate":null}',
@@ -564,7 +566,7 @@ class AIChatResponder {
       messages: [
         {
           role: 'system',
-          content: this.config.system_prompt + STRUCTURED_OUTPUT_INSTRUCTION
+          content: this.config.system_prompt + RESPONSE_FORMAT_CONTRACT
         },
         {
           role: 'user',

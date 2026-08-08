@@ -65,6 +65,28 @@ test('structured AI response isolates reply and memory candidate', () => {
   assert.equal(envelope.format, 'json');
 });
 
+test('system prompt keeps policy separate from the appended response format contract', () => {
+  const responder = new AIChatResponder({
+    config: {
+      enabled: true,
+      system_prompt_file: 'prompts/aichat-system.txt'
+    }
+  });
+  const request = responder.buildRequestBody({
+    channel: 'channel',
+    trigger: 'activity',
+    now: 1000,
+    memoryFacts: []
+  }, []);
+  const policyPrompt = responder.config.system_prompt;
+  const completeSystemPrompt = request.messages[0].content;
+
+  assert.match(policyPrompt, /【長期記憶候選判斷】/);
+  assert.doesNotMatch(policyPrompt, /【固定 JSON 與記憶候選】|候選格式：|完整 JSON 只能包含/);
+  assert.equal((completeSystemPrompt.match(/Return exactly one JSON object/g) || []).length, 1);
+  assert.equal((completeSystemPrompt.match(/"fact":"standalone durable fact"/g) || []).length, 1);
+});
+
 test('legacy plain text remains compatible but cannot create a candidate', () => {
   assert.deepEqual(parseAIEnvelope('普通文字回覆'), {
     reply: '普通文字回覆',

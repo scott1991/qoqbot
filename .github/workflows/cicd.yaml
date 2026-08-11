@@ -2,35 +2,75 @@ name: Node.js CI/CD
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   ci:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        node-version: [ 24.x ]
-
     steps:
-    - uses: actions/checkout@v4
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-    - run: npm ci
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
 
   cd:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: ci
     runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: qoqbot-production
+      cancel-in-progress: false
+
     steps:
-    - uses: actions/checkout@v4
-    - name: Deploy to server
-      if: github.ref == 'refs/heads/main'
-      run: |
-        mkdir -p ~/.ssh/
-        echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H -t rsa -p ${{ secrets.SSH_PORT }} ${{ secrets.HOST }} >> ~/.ssh/known_hosts 
-        scp -P ${{ secrets.SSH_PORT }} -r * ${{ secrets.USER }}@${{ secrets.HOST }}:/opt/servers/qoqbot
-        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.USER }}@${{ secrets.HOST }} 'source /home/${{ secrets.USER }}/.nvm/nvm.sh && nvm install 24 && nvm use 24 && cd /opt/servers/qoqbot && npm ci && pm2 restart qoqbot --update-env --interpreter "$(command -v node)"'
+      - uses: actions/checkout@v7
+
+      - name: Create deployment archive
+        run: git archive --format=tar.gz --output="$RUNNER_TEMP/qoqbot.tar.gz" "$GITHUB_SHA"
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload deployment files
+        env:
+          SSH_HOST: ${{ secrets.HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.USER }}
+        run: |
+          scp -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            -P "$SSH_PORT" \
+            ops/deploy.sh \
+            "$SSH_USER@$SSH_HOST:/opt/servers/qoqbot/ops/deploy.sh"
+          scp -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            -P "$SSH_PORT" \
+            "$RUNNER_TEMP/qoqbot.tar.gz" \
+            "$SSH_USER@$SSH_HOST:/opt/servers/qoqbot/upload/qoqbot.tar.gz"
+
+      - name: Deploy
+        env:
+          SSH_HOST: ${{ secrets.HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.USER }}
+        run: |
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            'sudo -n -u nodeapp /opt/servers/qoqbot/ops/deploy.sh'

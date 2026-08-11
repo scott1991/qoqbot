@@ -10,12 +10,12 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [ 18.x ]
+        node-version: [ 24.x ]
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v1
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
     - run: npm ci
@@ -24,7 +24,7 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Deploy to server
       if: github.ref == 'refs/heads/main'
       run: |
@@ -33,4 +33,4 @@ jobs:
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H -t rsa -p ${{ secrets.SSH_PORT }} ${{ secrets.HOST }} >> ~/.ssh/known_hosts 
         scp -P ${{ secrets.SSH_PORT }} -r * ${{ secrets.USER }}@${{ secrets.HOST }}:/opt/servers/qoqbot
-        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.USER }}@${{ secrets.HOST }} 'source /home/${{ secrets.USER }}/.nvm/nvm.sh && cd /opt/servers/qoqbot && npm install && pm2 restart qoqbot'
+        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.USER }}@${{ secrets.HOST }} 'source /home/${{ secrets.USER }}/.nvm/nvm.sh && nvm install 24 && nvm use 24 && cd /opt/servers/qoqbot && npm ci && pm2 restart qoqbot --update-env --interpreter "$(command -v node)"'

@@ -9,8 +9,8 @@
     "start": "node index.js"
   },
   "engines": {
-    "node": ">=18 <19",
-    "npm": ">=10 <11"
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
   },
   "author": "",
   "license": "ISC",

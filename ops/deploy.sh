@@ -3,7 +3,6 @@ set -Eeuo pipefail
 
 BASE="$(pwd -P)"
 ARCHIVE="$(realpath "${1:?Usage: deploy.sh <archive>}")"
-export NVM_DIR="$HOME/.nvm"
 
 fail() {
     echo "$*" >&2
@@ -12,7 +11,9 @@ fail() {
 
 [[ -r "$ARCHIVE" ]] || fail "Missing deployment archive: $ARCHIVE"
 [[ -r "$BASE/config.json" ]] || fail "Missing bot config: $BASE/config.json"
-[[ -f "$NVM_DIR/nvm.sh" ]] || fail "Missing nvm: $NVM_DIR/nvm.sh"
+for command in node npm pm2; do
+    command -v "$command" >/dev/null || fail "Required command is missing from PATH: $command"
+done
 
 exec 9>"$BASE/deploy.lock"
 flock -n 9 || fail 'Another deployment is running'
@@ -33,11 +34,13 @@ for required_file in package.json .nvmrc ecosystem.config.cjs; do
     [[ -f "$STAGING/$required_file" ]] || fail "Deployment archive is missing $required_file"
 done
 
-# shellcheck source=/dev/null
-source "$NVM_DIR/nvm.sh"
 cd "$STAGING"
-nvm use
-command -v pm2 >/dev/null || fail 'PM2 is missing for the selected Node version'
+node_major="$(< .nvmrc)"
+node_version="$(node --version)"
+[[ "$node_version" == "v$node_major."* ]] || fail "Expected Node $node_major, found $node_version"
+npm_version="$(npm --version)"
+[[ "$npm_version" == 11.* ]] || fail "Expected npm 11, found $npm_version"
+printf 'Using Node %s and npm %s\n' "$node_version" "$npm_version"
 npm ci --omit=dev
 
 cd "$BASE"

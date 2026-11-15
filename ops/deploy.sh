@@ -1,14 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-BASE='/opt/servers/qoqbot'
-ARCHIVE="$BASE/upload/qoqbot.tar.gz"
-APP="$BASE/app"
-NEXT="$BASE/app.next"
-OLD="$BASE/app.old"
-SHARED="$BASE/shared"
-
-export HOME='/home/nodeapp'
+BASE="$(pwd -P)"
+ARCHIVE="$(realpath "${1:?Usage: deploy.sh <archive>}")"
 export NVM_DIR="$HOME/.nvm"
 
 fail() {
@@ -16,78 +10,50 @@ fail() {
     exit 1
 }
 
-cleanup_next() {
-    rm -rf "$NEXT"
-}
-
-[[ "$(id -un)" == 'nodeapp' ]] || fail 'deploy.sh must run as nodeapp'
-[[ -d "$BASE/upload" ]] || fail "Missing deployment upload directory: $BASE/upload"
-[[ -d "$SHARED" ]] || fail "Missing shared directory: $SHARED"
-[[ -f "$ARCHIVE" ]] || fail "Missing deployment archive: $ARCHIVE"
-[[ -f "$SHARED/config.json" ]] || fail "Missing shared config: $SHARED/config.json"
+[[ -r "$ARCHIVE" ]] || fail "Missing deployment archive: $ARCHIVE"
+[[ -r "$BASE/config.json" ]] || fail "Missing bot config: $BASE/config.json"
 [[ -f "$NVM_DIR/nvm.sh" ]] || fail "Missing nvm: $NVM_DIR/nvm.sh"
 
 exec 9>"$BASE/deploy.lock"
 flock -n 9 || fail 'Another deployment is running'
 
-trap cleanup_next EXIT
+STAGING="$(mktemp -d "$BASE/.deploy.XXXXXXXXXX")"
+trap 'rm -rf -- "$STAGING"' EXIT
 
-rm -rf "$NEXT"
-mkdir -p "$NEXT"
-tar -xzf "$ARCHIVE" -C "$NEXT"
+# Runtime files in the deployment directory are managed by the bot.
+extract_release() {
+    tar -xzf "$ARCHIVE" -C "$1" --no-same-owner --no-overwrite-dir \
+        --anchored --exclude=config.json --exclude=database.json \
+        --exclude=database.sqlite3 --exclude=node_modules
+}
 
-[[ -f "$NEXT/package.json" ]] || fail 'Deployment archive does not contain package.json'
-[[ -f "$NEXT/.nvmrc" ]] || fail 'Deployment archive does not contain .nvmrc'
-[[ -f "$NEXT/ecosystem.config.cjs" ]] || fail 'Deployment archive does not contain ecosystem.config.cjs'
+extract_release "$STAGING"
 
-ln -sfn "$SHARED/config.json" "$NEXT/config.json"
-
-for state_file in database.json database.sqlite3; do
-    if [[ -f "$SHARED/$state_file" ]]; then
-        ln -sfn "$SHARED/$state_file" "$NEXT/$state_file"
-    fi
+for required_file in package.json .nvmrc ecosystem.config.cjs; do
+    [[ -f "$STAGING/$required_file" ]] || fail "Deployment archive is missing $required_file"
 done
 
 # shellcheck source=/dev/null
 source "$NVM_DIR/nvm.sh"
-
-cd "$NEXT"
+cd "$STAGING"
 nvm use
+command -v pm2 >/dev/null || fail 'PM2 is missing for the selected Node version'
 npm ci --omit=dev
 
-rm -rf "$OLD"
+cd "$BASE"
+extract_release "$BASE"
 
-if [[ -d "$APP" ]]; then
-    mv "$APP" "$OLD"
+if [[ -e node_modules || -L node_modules ]]; then
+    mv -T -- node_modules "$STAGING/previous-node_modules"
 fi
 
-if ! mv "$NEXT" "$APP"; then
-    echo 'Application directory switch failed; restoring previous application' >&2
-
-    if [[ -d "$OLD" ]]; then
-        mv "$OLD" "$APP" || true
+if ! mv -T -- "$STAGING/node_modules" node_modules; then
+    if [[ -e "$STAGING/previous-node_modules" || -L "$STAGING/previous-node_modules" ]]; then
+        mv -T -- "$STAGING/previous-node_modules" node_modules
     fi
-
-    exit 1
+    fail 'Could not install the new node_modules directory'
 fi
 
-cd "$APP"
-
-if ! pm2 startOrReload ecosystem.config.cjs --env production; then
-    echo 'PM2 reload failed; restoring previous application' >&2
-    rm -rf "$APP"
-
-    if [[ -d "$OLD" ]]; then
-        mv "$OLD" "$APP"
-        cd "$APP"
-        pm2 startOrReload ecosystem.config.cjs --env production || true
-    fi
-
-    exit 1
-fi
-
+pm2 startOrReload ecosystem.config.cjs --env production
 pm2 save
-rm -rf "$OLD"
-rm -f "$ARCHIVE"
-
 echo 'qoqbot deployment completed'

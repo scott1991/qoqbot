@@ -2,7 +2,7 @@ module.exports = {
     apps: [
         {
             name: 'qoqbot',
-            cwd: '/opt/servers/qoqbot/app',
+            cwd: __dirname,
             script: 'index.js',
             interpreter: process.execPath,
             autorestart: true,

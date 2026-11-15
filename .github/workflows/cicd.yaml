@@ -49,28 +49,25 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Upload deployment files
-        env:
-          SSH_HOST: ${{ secrets.HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          SSH_USER: ${{ secrets.USER }}
-        run: |
-          scp -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
-            -P "$SSH_PORT" \
-            ops/deploy.sh \
-            "$SSH_USER@$SSH_HOST:/opt/servers/qoqbot/ops/deploy.sh"
-          scp -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
-            -P "$SSH_PORT" \
-            "$RUNNER_TEMP/qoqbot.tar.gz" \
-            "$SSH_USER@$SSH_HOST:/opt/servers/qoqbot/upload/qoqbot.tar.gz"
-
       - name: Deploy
         env:
           SSH_HOST: ${{ secrets.HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
           SSH_USER: ${{ secrets.USER }}
         run: |
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
-            -p "$SSH_PORT" \
-            "$SSH_USER@$SSH_HOST" \
-            'sudo -n -u nodeapp /opt/servers/qoqbot/ops/deploy.sh'
+          set -euo pipefail
+          ssh_options=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes)
+          target="$SSH_USER@$SSH_HOST"
+          remote_archive="$(ssh "${ssh_options[@]}" -p "$SSH_PORT" "$target" \
+            'mktemp /tmp/qoqbot-XXXXXXXXXX.tar.gz')"
+          [[ "$remote_archive" =~ ^/tmp/qoqbot-[[:alnum:]]{10}\.tar\.gz$ ]]
+
+          cleanup() {
+            ssh "${ssh_options[@]}" -p "$SSH_PORT" "$target" "rm -f -- '$remote_archive'" || true
+          }
+          trap cleanup EXIT
+
+          scp "${ssh_options[@]}" -P "$SSH_PORT" \
+            "$RUNNER_TEMP/qoqbot.tar.gz" "$target:$remote_archive"
+          ssh "${ssh_options[@]}" -p "$SSH_PORT" "$target" \
+            "cd /opt/servers/qoqbot && bash -s -- '$remote_archive'" < ops/deploy.sh
